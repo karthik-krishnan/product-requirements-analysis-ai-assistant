@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X, Eye, EyeOff, Zap, Cloud, BrainCircuit, Monitor, Cpu } from 'lucide-react'
+import { X, Eye, EyeOff, Zap, Cloud, BrainCircuit, Monitor, Cpu, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import type { APISettings, AssistanceLevel, AIProvider } from '../types'
 import { ASSISTANCE_LEVELS } from '../utils/assistanceLevels'
+import { callLLM, hasValidKey, parseJSON } from '../services/llm/client'
 
 interface Props {
   settings: APISettings
@@ -22,10 +23,36 @@ export default function Settings({ settings, onSave, onClose }: Props) {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false)
   const [showOpenAIKey, setShowOpenAIKey] = useState(false)
   const [showAzureKey, setShowAzureKey] = useState(false)
+  const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const [testMessage, setTestMessage] = useState('')
 
-  const update = (patch: Partial<APISettings>) => setLocal(prev => ({ ...prev, ...patch }))
+  const update = (patch: Partial<APISettings>) => {
+    setLocal(prev => ({ ...prev, ...patch }))
+    setTestStatus('idle')
+  }
 
   const handleSave = () => { onSave(local); onClose() }
+
+  const handleTest = async () => {
+    setTestStatus('loading')
+    setTestMessage('')
+    try {
+      const raw = await callLLM([
+        { role: 'user', content: 'Reply with this exact JSON and nothing else: {"ok": true, "message": "Connection successful"}' },
+      ], local)
+      const data = parseJSON<{ ok: boolean; message: string }>(raw)
+      if (data.ok) {
+        setTestStatus('ok')
+        setTestMessage(data.message ?? 'Connection successful')
+      } else {
+        setTestStatus('error')
+        setTestMessage('Unexpected response from model')
+      }
+    } catch (err) {
+      setTestStatus('error')
+      setTestMessage((err as Error).message)
+    }
+  }
 
   return (
     <div
@@ -262,9 +289,35 @@ export default function Settings({ settings, onSave, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
-          <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
-          <button onClick={handleSave} className="btn-primary text-sm">Save Settings</button>
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex flex-col gap-3">
+          {testStatus !== 'idle' && (
+            <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+              testStatus === 'loading' ? 'bg-brand-50 text-brand-600 border border-brand-200' :
+              testStatus === 'ok'      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                        'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {testStatus === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 mt-0.5" />}
+              {testStatus === 'ok'      && <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+              {testStatus === 'error'   && <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+              <span className="break-words min-w-0">
+                {testStatus === 'loading' ? 'Sending test request…' : testMessage}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <button
+              onClick={handleTest}
+              disabled={!hasValidKey(local) || testStatus === 'loading'}
+              className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-40"
+            >
+              {testStatus === 'loading' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              Test Connection
+            </button>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+              <button onClick={handleSave} className="btn-primary text-sm">Save Settings</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
