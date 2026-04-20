@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   ShieldCheck, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp,
   Lightbulb, ArrowRight, ChevronRight, FileText, Sparkles, Check, X,
-  GitBranch, Loader2, Wand2
+  GitBranch, Loader2, Wand2, Zap
 } from 'lucide-react'
 import type { Story, INVESTValidation, FixProposal, FieldDiff } from '../types'
 import { MOCK_INVEST_VALIDATION, MOCK_STORY_LIST, MOCK_INVEST_FIXES } from '../data/mockData'
@@ -208,6 +208,23 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
                         <p className="text-xs text-gray-500 mt-1 leading-relaxed">{s.description}</p>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Spike card */}
+              {fix.isSpike && fix.spikeStory && (
+                <div className="mb-3 border border-amber-200 rounded-lg overflow-hidden">
+                  <div className="bg-amber-50 px-3 py-2 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-600" />
+                    <p className="text-xs font-semibold text-amber-700">Spike story recommended before delivery</p>
+                  </div>
+                  <div className="p-3 bg-white">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-xs font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">⚡ Spike</span>
+                      <p className="text-xs font-semibold text-gray-700">{fix.spikeStory.title}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-relaxed">{fix.spikeStory.description}</p>
                   </div>
                 </div>
               )}

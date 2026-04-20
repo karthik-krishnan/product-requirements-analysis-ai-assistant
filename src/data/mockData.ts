@@ -314,7 +314,12 @@ export const MOCK_INVEST_FIXES: Record<string, FixProposal> = {
 
   estimable: {
     principleKey: 'estimable',
-    summary: 'Improve estimability by clarifying the 300ms measurement point in acceptance criteria and adding explicit assumptions about the Elasticsearch approach, so the team can commit to an estimate with confidence.',
+    summary: 'Improve estimability by clarifying the 300ms measurement point in AC and adding a time-boxed spike to validate the Elasticsearch query approach before the team commits to an estimate.',
+    isSpike: true,
+    spikeStory: {
+      title: 'Spike: Validate Elasticsearch query approach for product search',
+      description: 'Time-boxed 1-day investigation to validate BM25 scoring, query DSL structure, and P95 latency targets against the provisioned cluster. Output: a short decision doc and a revised story-point estimate for the search story.',
+    },
     diffs: [
       {
         field: 'acceptanceCriteria',

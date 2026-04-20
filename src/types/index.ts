@@ -95,6 +95,8 @@ export interface FixProposal {
   summary: string
   isSplit?: boolean
   splitStories?: { title: string; description: string }[]
+  isSpike?: boolean
+  spikeStory?: { title: string; description: string }
   diffs: FieldDiff[]
   patch: Partial<Story>
 }
