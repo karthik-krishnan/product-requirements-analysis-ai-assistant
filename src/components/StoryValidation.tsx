@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ShieldCheck, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp,
   Lightbulb, ArrowRight, ChevronRight, FileText, Sparkles, Check, X,
   GitBranch, Loader2, Wand2, Zap
 } from 'lucide-react'
-import type { Story, INVESTValidation, FixProposal, FieldDiff } from '../types'
+import type { APISettings, Story, INVESTValidation, FixProposal, FieldDiff } from '../types'
 import { MOCK_INVEST_VALIDATION, MOCK_STORY_LIST, MOCK_INVEST_FIXES } from '../data/mockData'
+import { callLLM, hasValidKey } from '../services/llm/client'
+import { buildValidateINVESTPrompt, parseINVESTValidation } from '../prompts/validateINVEST'
+import { buildFixINVESTPrompt, parseFixProposal } from '../prompts/fixINVEST'
 
 const INVEST_META = {
   independent: { label: 'Independent', letter: 'I', color: 'text-blue-600',   bg: 'bg-blue-50',   description: 'Can be developed and released independently of other stories' },
@@ -76,19 +79,42 @@ interface INVESTRowProps {
   item: INVESTValidation[INVESTKey]
   fix?: FixProposal
   accepted: boolean
+  settings: APISettings
+  story: Story
   onAcceptFix: (patch: Partial<Story>, newStory?: Omit<Story, 'id'>) => void
 }
 
-function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRowProps) {
+function INVESTRow({ principleKey, item, fix: initialFix, accepted, settings, story, onAcceptFix }: INVESTRowProps) {
   const [suggestionsExpanded, setSuggestionsExpanded] = useState(false)
   const [fixOpen, setFixOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [liveFix, setLiveFix] = useState<FixProposal | undefined>(initialFix)
+  const [fixError, setFixError] = useState<string | null>(null)
   const meta = INVEST_META[principleKey]
 
-  const handleFixClick = () => {
+  const fix = liveFix
+
+  const handleFixClick = async () => {
     if (fixOpen) { setFixOpen(false); return }
     setLoading(true)
-    setTimeout(() => { setLoading(false); setFixOpen(true) }, 1000)
+    setFixError(null)
+    if (hasValidKey(settings)) {
+      try {
+        const raw = await callLLM(
+          buildFixINVESTPrompt(story, principleKey, meta.label, item),
+          settings,
+        )
+        setLiveFix(parseFixProposal(raw))
+        setFixOpen(true)
+      } catch (err) {
+        setFixError((err as Error).message)
+        if (initialFix) { setLiveFix(initialFix); setFixOpen(true) }
+      }
+    } else {
+      await new Promise(r => setTimeout(r, 1000))
+      setFixOpen(true)
+    }
+    setLoading(false)
   }
 
   const displayScore = accepted ? Math.min(item.score + 35, 95) : item.score
@@ -192,6 +218,12 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
                   <p className="text-xs text-brand-600 leading-relaxed">{fix.summary}</p>
                 </div>
               </div>
+              {fixError && (
+                <div className="mb-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-600">AI fix failed — showing mock proposal. {fixError}</p>
+                </div>
+              )}
 
               {/* Split notice */}
               {fix.isSplit && fix.splitStories && (
@@ -261,16 +293,30 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
   )
 }
 
-function ValidationDetail({ story, onStoryChange, onAddStory, onViewStory }: {
+function ValidationDetail({ story, settings, onStoryChange, onAddStory, onViewStory }: {
   story: Story
+  settings: APISettings
   onStoryChange: (s: Story) => void
   onAddStory: (s: Omit<Story, 'id'>) => void
   onViewStory: (id: string) => void
 }) {
-  const validation = story.investValidation || MOCK_INVEST_VALIDATION
+  const [validation, setValidation] = useState<INVESTValidation>(story.investValidation || MOCK_INVEST_VALIDATION)
+  const [validating, setValidating] = useState(false)
+  const [validateError, setValidateError] = useState<string | null>(null)
   const keys = Object.keys(INVEST_META) as INVESTKey[]
   const [acceptedKeys, setAcceptedKeys] = useState<Set<string>>(new Set())
   const [fixAllLoading, setFixAllLoading] = useState(false)
+
+  useEffect(() => {
+    if (!hasValidKey(settings) || story.investValidation) return
+    setValidating(true)
+    setValidateError(null)
+    callLLM(buildValidateINVESTPrompt(story), settings)
+      .then(raw => setValidation(parseINVESTValidation(raw)))
+      .catch(err => setValidateError((err as Error).message))
+      .finally(() => setValidating(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id])
 
   const failingKeys = keys.filter(k => !validation[k].adheres && MOCK_INVEST_FIXES[k])
   const pendingFixes = failingKeys.filter(k => !acceptedKeys.has(k))
@@ -302,6 +348,21 @@ function ValidationDetail({ story, onStoryChange, onAddStory, onViewStory }: {
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in-up">
+      {validating && (
+        <div className="flex items-center gap-2 text-xs text-brand-600 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          Validating story against INVEST principles with AI…
+        </div>
+      )}
+      {validateError && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-red-700">INVEST validation failed — showing mock results</p>
+            <p className="text-xs text-red-600 mt-0.5">{validateError}</p>
+          </div>
+        </div>
+      )}
       {/* Story summary */}
       <div className="card p-4 bg-gray-50">
         <div className="flex items-start gap-2 mb-2">
@@ -372,6 +433,8 @@ function ValidationDetail({ story, onStoryChange, onAddStory, onViewStory }: {
                   item={validation[key]}
                   fix={MOCK_INVEST_FIXES[key]}
                   accepted={acceptedKeys.has(key)}
+                  settings={settings}
+                  story={story}
                   onAcceptFix={(patch, newStory) => acceptFix(key, patch, newStory)}
                 />
               ))}
@@ -393,11 +456,12 @@ function ValidationDetail({ story, onStoryChange, onAddStory, onViewStory }: {
 interface Props {
   storyId: string
   stories: Story[]
+  settings: APISettings
   onViewStory: (storyId: string) => void
   onAddStory?: (epicId: string, story: Story) => void
 }
 
-export default function StoryValidation({ storyId, stories, onViewStory, onAddStory }: Props) {
+export default function StoryValidation({ storyId, stories, settings, onViewStory, onAddStory }: Props) {
   const allStories = stories.length > 0 ? stories : MOCK_STORY_LIST
   const initial = allStories.find(s => s.id === storyId) || allStories[0]
   const [selectedStory, setSelectedStory] = useState<Story>(initial)
@@ -476,6 +540,7 @@ export default function StoryValidation({ storyId, stories, onViewStory, onAddSt
           <ValidationDetail
             key={selectedStory.id}
             story={getStory(selectedStory)}
+            settings={settings}
             onStoryChange={updated => setStoryVersions(prev => ({ ...prev, [selectedStory.id]: updated }))}
             onAddStory={handleAddStory}
             onViewStory={onViewStory}

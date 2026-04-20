@@ -1,22 +1,34 @@
 import { useState, useRef, useEffect } from 'react'
-import { BookMarked, ChevronRight, Send, SkipForward, Sparkles, CheckCircle, ArrowRight, MessageSquare } from 'lucide-react'
-import type { AssistanceLevel, Epic, Story, ChatMessage } from '../types'
-import { MOCK_EPICS, MOCK_EPIC_QUESTIONS, MOCK_STORY_LIST } from '../data/mockData'
+import {
+  BookMarked, ChevronRight, Send, SkipForward, Sparkles,
+  CheckCircle, ArrowRight, MessageSquare, AlertCircle, Loader2,
+} from 'lucide-react'
+import type { APISettings, ContextCapture, Epic, Story, ChatMessage, ClarifyingQuestion } from '../types'
+import { MOCK_EPIC_QUESTIONS, MOCK_STORY_LIST } from '../data/mockData'
 import { getQuestionCount } from '../utils/assistanceLevels'
+import { callLLM, hasValidKey } from '../services/llm/client'
+import { buildClarifyingQuestionsPrompt, parseClarifyingQuestions } from '../prompts/clarifyingQuestions'
+import { buildGenerateStoriesPrompt, parseStories } from '../prompts/generateStories'
 
 interface Props {
   epicId: string
   epics: Epic[]
-  assistanceLevel: AssistanceLevel
+  settings: APISettings
+  context: ContextCapture
   onStoriesGenerated: (epicId: string, stories: Story[]) => void
   onViewStory: (storyId: string) => void
 }
 
 type Phase = 'input' | 'clarifying' | 'done'
 
-export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLevel, onStoriesGenerated, onViewStory }: Props) {
-  const epics = propEpics.length > 0 ? propEpics : MOCK_EPICS
-  const epic = epics.find(e => e.id === epicId) || epics[1]
+const PRIORITY_COLORS: Record<string, string> = {
+  High: 'bg-red-100 text-red-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low: 'bg-green-100 text-green-700',
+}
+
+export default function StoryBreakdown({ epicId, epics, settings, context, onStoriesGenerated, onViewStory }: Props) {
+  const epic = epics.find(e => e.id === epicId) || epics[0]
 
   const [phase, setPhase] = useState<Phase>('input')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -24,74 +36,140 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
   const [isTyping, setIsTyping] = useState(false)
   const [currentQIndex, setCurrentQIndex] = useState(0)
   const [answeredCount, setAnsweredCount] = useState(0)
+  const [answeredQuestions, setAnsweredQuestions] = useState<ClarifyingQuestion[]>([])
   const [stories, setStories] = useState<Story[]>([])
-  const initializedRef = useRef(false)
+  const [llmLoading, setLlmLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const questionsRef = useRef<ClarifyingQuestion[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const questionCount = useRef(getQuestionCount(assistanceLevel)).current
-  const questions = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
+  const useLLM = hasValidKey(settings)
+  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
-  const startDiscovery = () => {
-    setPhase('clarifying')
-    const intro: ChatMessage = {
-      id: '0',
-      role: 'assistant',
-      content: `Let's dig into the **"${epic.title}"** epic. I have ${questions.length} focused questions to help me generate precise, well-defined stories.`,
-      timestamp: new Date(),
-    }
-    setMessages([intro])
-    setTimeout(() => {
-      setIsTyping(true)
-      setTimeout(() => {
-        setIsTyping(false)
-        setMessages(prev => [...prev, {
-          id: '1',
-          role: 'assistant',
-          content: `**Question 1 of ${questions.length}:** ${questions[0].question}`,
-          options: questions[0].options,
-          timestamp: new Date(),
-        }])
-      }, 1000)
-    }, 400)
-  }
-
   const addMsg = (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     setMessages(prev => [...prev, { ...msg, id: Math.random().toString(36).slice(2), timestamp: new Date() }])
   }
 
-  const simulateTyping = (cb: () => void, delay = 1100) => {
+  const simulateTyping = (cb: () => void, delay = 1000) => {
     setIsTyping(true)
     setTimeout(() => { setIsTyping(false); cb() }, delay)
   }
 
-  const advance = (answer: string) => {
-    const next = currentQIndex + 1
-    setAnsweredCount(prev => prev + 1)
+  const startDiscovery = async () => {
+    setPhase('clarifying')
+    setError(null)
 
-    if (next >= questions.length) {
+    if (useLLM && settings.assistanceLevel > 0) {
+      setLlmLoading(true)
+      addMsg({
+        role: 'assistant',
+        content: `Let's dig into the **"${epic.title}"** epic. Let me generate ${questionCount} targeted question${questionCount > 1 ? 's' : ''} to help define precise stories…`,
+      })
+      try {
+        const epicContext = `Epic: ${epic.title}\n${epic.description}`
+        const raw = await callLLM(
+          buildClarifyingQuestionsPrompt(epicContext, context, questionCount),
+          settings,
+        )
+        const qs = parseClarifyingQuestions(raw)
+        questionsRef.current = qs
+        setLlmLoading(false)
+        simulateTyping(() => {
+          addMsg({
+            role: 'assistant',
+            content: `**Question 1 of ${qs.length}:** ${qs[0].question}`,
+            options: qs[0].options,
+          })
+        }, 400)
+      } catch (err) {
+        setLlmLoading(false)
+        setError((err as Error).message)
+        questionsRef.current = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
+        simulateTyping(() => {
+          const q = questionsRef.current[0]
+          addMsg({
+            role: 'assistant',
+            content: `**Question 1 of ${questionsRef.current.length}:** ${q.question}`,
+            options: q.options,
+          })
+        }, 400)
+      }
+    } else {
+      questionsRef.current = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
+      const qs = questionsRef.current
+      addMsg({
+        role: 'assistant',
+        content: `Let's dig into the **"${epic.title}"** epic. I have ${qs.length} focused question${qs.length > 1 ? 's' : ''} to help me generate precise, well-defined stories.`,
+      })
+      setTimeout(() => {
+        setIsTyping(true)
+        setTimeout(() => {
+          setIsTyping(false)
+          addMsg({
+            role: 'assistant',
+            content: `**Question 1 of ${qs.length}:** ${qs[0].question}`,
+            options: qs[0].options,
+          })
+        }, 1000)
+      }, 400)
+    }
+  }
+
+  const advance = async (answer: string) => {
+    const qs = questionsRef.current
+    const q = qs[currentQIndex]
+    const updatedQs = [...answeredQuestions, { ...q, answer }]
+    setAnsweredQuestions(updatedQs)
+    setAnsweredCount(prev => prev + 1)
+    const next = currentQIndex + 1
+
+    if (next >= qs.length) {
       simulateTyping(() => {
         addMsg({ role: 'assistant', content: `Excellent! I have everything I need. Generating stories for this epic now…` })
-        simulateTyping(() => {
-          const generatedStories = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
-          setStories(generatedStories)
-          setPhase('done')
-          onStoriesGenerated(epic.id, generatedStories)
-        }, 1500)
+        generateStories(updatedQs)
       })
     } else {
       setCurrentQIndex(next)
       simulateTyping(() => {
-        const q = questions[next]
+        const nextQ = qs[next]
         addMsg({
           role: 'assistant',
-          content: `**Question ${next + 1} of ${questions.length}:** ${q.question}`,
-          options: q.options,
+          content: `**Question ${next + 1} of ${qs.length}:** ${nextQ.question}`,
+          options: nextQ.options,
         })
       })
+    }
+  }
+
+  const generateStories = async (questions: ClarifyingQuestion[]) => {
+    setLlmLoading(true)
+    setError(null)
+    try {
+      if (useLLM) {
+        const raw = await callLLM(buildGenerateStoriesPrompt(epic, context, questions), settings)
+        const generated = parseStories(raw, epic.id)
+        setStories(generated)
+        setPhase('done')
+        onStoriesGenerated(epic.id, generated)
+      } else {
+        await new Promise(r => setTimeout(r, 1500))
+        const generated = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
+        setStories(generated)
+        setPhase('done')
+        onStoriesGenerated(epic.id, generated)
+      }
+    } catch (err) {
+      setError((err as Error).message)
+      const fallback = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
+      setStories(fallback)
+      setPhase('done')
+      onStoriesGenerated(epic.id, fallback)
+    } finally {
+      setLlmLoading(false)
     }
   }
 
@@ -110,34 +188,39 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
     advance(text)
   }
 
-  const handleSkip = () => {
-    const generatedStories = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
-    setStories(generatedStories)
-    setPhase('done')
-    onStoriesGenerated(epic.id, generatedStories)
-  }
+  const handleSkip = () => generateStories([])
 
-  const PRIORITY_COLORS: Record<string, string> = {
-    High: 'bg-red-100 text-red-700',
-    Medium: 'bg-amber-100 text-amber-700',
-    Low: 'bg-green-100 text-green-700',
-  }
+  const questions = questionsRef.current
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in-up">
       {/* Epic context bar */}
-      <div className="card p-4 mb-6 bg-brand-50 border-brand-200 flex items-center gap-3">
+      <div className="card p-4 mb-4 bg-brand-50 border-brand-200 flex items-center gap-3">
         <BookMarked className="w-4 h-4 text-brand-500 shrink-0" />
         <div className="min-w-0">
           <p className="text-xs text-brand-500 font-medium mb-0.5">Breaking down Epic</p>
           <p className="text-sm font-semibold text-brand-800 truncate">{epic.title}</p>
         </div>
-        <div className="ml-auto shrink-0">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {useLLM && (
+            <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Live AI</span>
+          )}
           <span className="text-xs text-brand-400">{epic.category}</span>
         </div>
       </div>
 
-      {/* Input phase — choose mode */}
+      {error && (
+        <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 animate-fade-in-up">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed — using mock data</p>
+            <p className="text-xs text-red-600 break-words">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 shrink-0 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Input phase */}
       {phase === 'input' && (
         <div className="card p-6 mb-6 animate-fade-in-up">
           <div className="flex items-center gap-2 mb-3">
@@ -148,11 +231,11 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
             You can explore the epic further with a few targeted questions before generating stories, or go straight to generating them now.
           </p>
           <div className="flex items-center gap-3">
-            <button onClick={handleSkip} className="btn-secondary flex items-center gap-2">
-              <SkipForward className="w-4 h-4" />
-              Generate Stories Directly
+            <button onClick={handleSkip} disabled={llmLoading} className="btn-secondary flex items-center gap-2">
+              {llmLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <SkipForward className="w-4 h-4" />}
+              {llmLoading ? 'Generating…' : 'Generate Stories Directly'}
             </button>
-            {assistanceLevel > 0 && (
+            {settings.assistanceLevel > 0 && (
               <button onClick={startDiscovery} className="btn-primary flex items-center gap-2">
                 <Sparkles className="w-4 h-4" />
                 Explore & Brainstorm
@@ -167,7 +250,7 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
         <div className="card overflow-hidden flex flex-col">
           <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Story Discovery</span>
-            {phase === 'clarifying' && (
+            {phase === 'clarifying' && questions.length > 0 && (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5">
                   {questions.map((_, i) => (
@@ -195,7 +278,8 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
                   {msg.options && msg.options.length > 0 && !msg.selectedOption && phase === 'clarifying' && (
                     <div className="flex flex-wrap gap-1.5">
                       {msg.options.map(opt => (
-                        <button key={opt} onClick={() => handleOptionSelect(opt)} className="text-xs border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-full px-2.5 py-1 transition-colors">
+                        <button key={opt} onClick={() => handleOptionSelect(opt)}
+                          className="text-xs border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-full px-2.5 py-1 transition-colors">
                           {opt}
                         </button>
                       ))}
@@ -205,7 +289,7 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
                 </div>
               </div>
             ))}
-            {isTyping && (
+            {(isTyping || llmLoading) && (
               <div className="flex gap-2.5">
                 <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold">AI</div>
                 <div className="bg-brand-50 border border-brand-100 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1 items-center">
@@ -238,9 +322,7 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
           <div className="flex items-center gap-2 px-1">
             <Sparkles className="w-4 h-4 text-brand-500" />
             <span className="text-sm font-semibold text-gray-700">Generated Stories</span>
-            {stories.length > 0 && (
-              <span className="badge bg-brand-100 text-brand-600">{stories.length}</span>
-            )}
+            {stories.length > 0 && <span className="badge bg-brand-100 text-brand-600">{stories.length}</span>}
           </div>
 
           {stories.length === 0 ? (
@@ -248,7 +330,10 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
               <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-gray-300" />
               </div>
-              <p className="text-sm text-gray-400">Stories will appear here after the AI clarification is complete</p>
+              <p className="text-sm text-gray-400">
+                {llmLoading ? 'AI is generating stories…' : 'Stories will appear here after generation is complete'}
+              </p>
+              {llmLoading && <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />}
             </div>
           ) : (
             <div className="flex flex-col gap-3">

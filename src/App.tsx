@@ -11,7 +11,7 @@ import EpicsView from './components/EpicsView'
 import StoryBreakdown from './components/StoryBreakdown'
 import StoryValidation from './components/StoryValidation'
 import UserStoryDisplay from './components/UserStoryDisplay'
-import { MOCK_EPICS, MOCK_STORY_LIST } from './data/mockData'
+import { MOCK_STORY_LIST } from './data/mockData'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
   { id: 'context',       label: 'Context',      icon: BookOpen,     description: 'Domain & tech context' },
@@ -89,8 +89,8 @@ export default function App() {
     setState(p => ({ ...p, clarifyingQuestions: questions, clarifyingComplete: true }))
   }
 
-  const handleGenerateEpics = () => {
-    setState(p => ({ ...p, currentStep: 'epics', epics: MOCK_EPICS }))
+  const handleGenerateEpics = (epics: Epic[]) => {
+    setState(p => ({ ...p, currentStep: 'epics', epics }))
   }
 
   const handleEpicsChange = (epics: Epic[]) => {
@@ -228,7 +228,8 @@ export default function App() {
               rawRequirements={state.rawRequirements}
               clarifyingQuestions={state.clarifyingQuestions}
               clarifyingComplete={state.clarifyingComplete}
-              assistanceLevel={state.settings.assistanceLevel}
+              settings={state.settings}
+              context={state.context}
               onRequirementsChange={r => setState(p => ({ ...p, rawRequirements: r }))}
               onClarifyingComplete={handleClarifyingComplete}
               onGenerateEpics={handleGenerateEpics}
@@ -245,7 +246,8 @@ export default function App() {
             <StoryBreakdown
               epicId={state.selectedEpicId}
               epics={state.epics}
-              assistanceLevel={state.settings.assistanceLevel}
+              settings={state.settings}
+              context={state.context}
               onStoriesGenerated={handleStoriesGenerated}
               onViewStory={handleViewStory}
             />
@@ -254,6 +256,7 @@ export default function App() {
             <StoryValidation
               storyId={state.selectedStoryId || ''}
               stories={getStoriesForEpic()}
+              settings={state.settings}
               onViewStory={handleViewFullStory}
               onAddStory={(epicId, story) => {
                 setState(p => ({
