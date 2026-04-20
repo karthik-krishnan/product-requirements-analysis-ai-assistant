@@ -3,7 +3,7 @@ import {
   BookOpen, FileText, Layers, BookMarked,
   ShieldCheck, ScrollText, ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
 } from 'lucide-react'
-import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story } from './types'
+import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story, INVESTValidation } from './types'
 import Settings from './components/Settings'
 import ContextCaptureComponent from './components/ContextCapture'
 import RequirementsInput from './components/RequirementsInput'
@@ -65,6 +65,8 @@ export default function App() {
     epics: [],
     selectedEpicId: null,
     selectedStoryId: null,
+    storyValidations: {},
+    storyAcceptedFixes: {},
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -111,6 +113,18 @@ export default function App() {
   const handleViewStory = (storyId: string) => {
     setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'validation' }))
   }
+
+  const handleStoryValidated = (storyId: string, validation: INVESTValidation) =>
+    setState(p => ({ ...p, storyValidations: { ...p.storyValidations, [storyId]: validation } }))
+
+  const handleFixAccepted = (storyId: string, key: string) =>
+    setState(p => ({
+      ...p,
+      storyAcceptedFixes: {
+        ...p.storyAcceptedFixes,
+        [storyId]: [...(p.storyAcceptedFixes[storyId] ?? []), key],
+      },
+    }))
 
   const handleViewFullStory = (storyId: string) => {
     setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'story-display' }))
@@ -257,6 +271,10 @@ export default function App() {
               storyId={state.selectedStoryId || ''}
               stories={getStoriesForEpic()}
               settings={state.settings}
+              storyValidations={state.storyValidations}
+              storyAcceptedFixes={state.storyAcceptedFixes}
+              onStoryValidated={handleStoryValidated}
+              onFixAccepted={handleFixAccepted}
               onViewStory={handleViewFullStory}
               onAddStory={(epicId, story) => {
                 setState(p => ({
