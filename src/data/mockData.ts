@@ -365,6 +365,32 @@ export const MOCK_INVEST_FIXES: Record<string, FixProposal> = {
         description: 'As a shopper, I want to see product suggestions appear as I type in the search box, so that I can jump to the right product without completing my search. Delivered behind a feature flag, depends on Story 1.',
       },
     ],
+    splitNewStory: {
+      epicId: 'epic-2',
+      title: 'Auto-suggest dropdown overlay',
+      asA: 'shopper',
+      iWantTo: 'see product suggestions appear as I type in the search box',
+      soThat: 'I can jump to the right product without completing my full search query',
+      acceptanceCriteria: [
+        'Suggestions appear within 150ms of each keystroke (250ms debounce)',
+        'Dropdown shows top 5 suggestions with product thumbnail and price',
+        'Keyboard navigation supported (arrow keys, Enter to select, Escape to dismiss)',
+        'Dismissed on click outside',
+        'Graceful fallback if suggestion API is slow or unavailable',
+      ],
+      inScope: ['Auto-suggest dropdown overlay', 'Debounced Elasticsearch query', 'Keyboard navigation in dropdown'],
+      outOfScope: ['Search history personalisation', 'Image-based suggestions', 'Voice search'],
+      assumptions: [
+        'Delivered behind a feature flag — depends on keyword search story being live',
+        'Reuses the same Elasticsearch index as the base search story',
+      ],
+      crossFunctionalNeeds: [
+        'UX: dropdown designs and interaction spec',
+        'Analytics: suggestion click-through events to data lake',
+      ],
+      priority: 'High' as const,
+      storyPoints: 3,
+    },
     diffs: [
       {
         field: 'title',

@@ -95,6 +95,7 @@ export interface FixProposal {
   summary: string
   isSplit?: boolean
   splitStories?: { title: string; description: string }[]
+  splitNewStory?: Omit<Story, 'id'>
   isSpike?: boolean
   spikeStory?: { title: string; description: string }
   diffs: FieldDiff[]

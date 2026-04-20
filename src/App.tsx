@@ -255,6 +255,14 @@ export default function App() {
               storyId={state.selectedStoryId || ''}
               stories={getStoriesForEpic()}
               onViewStory={handleViewFullStory}
+              onAddStory={(epicId, story) => {
+                setState(p => ({
+                  ...p,
+                  epics: p.epics.map(e =>
+                    e.id === epicId ? { ...e, stories: [...(e.stories || []), story] } : e
+                  ),
+                }))
+              }}
             />
           )}
           {state.currentStep === 'story-display' && (

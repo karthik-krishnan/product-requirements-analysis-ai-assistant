@@ -76,7 +76,7 @@ interface INVESTRowProps {
   item: INVESTValidation[INVESTKey]
   fix?: FixProposal
   accepted: boolean
-  onAcceptFix: (patch: Partial<Story>) => void
+  onAcceptFix: (patch: Partial<Story>, newStory?: Omit<Story, 'id'>) => void
 }
 
 function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRowProps) {
@@ -199,6 +199,7 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
                   <div className="bg-brand-100 px-3 py-2 flex items-center gap-1.5">
                     <GitBranch className="w-3.5 h-3.5 text-brand-600" />
                     <p className="text-xs font-semibold text-brand-700">Story will be split into 2</p>
+                    <span className="ml-auto text-xs text-brand-500 italic">Story 2 added to backlog on accept</span>
                   </div>
                   <div className="grid grid-cols-2 divide-x divide-brand-100">
                     {fix.splitStories.map((s, i) => (
@@ -237,7 +238,7 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { onAcceptFix(fix.patch); setFixOpen(false) }}
+                  onClick={() => { onAcceptFix(fix.patch, fix.splitNewStory); setFixOpen(false) }}
                   className="btn-primary flex items-center gap-1.5 text-xs py-1.5"
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -259,9 +260,10 @@ function INVESTRow({ principleKey, item, fix, accepted, onAcceptFix }: INVESTRow
   )
 }
 
-function ValidationDetail({ story, onStoryChange, onViewStory }: {
+function ValidationDetail({ story, onStoryChange, onAddStory, onViewStory }: {
   story: Story
   onStoryChange: (s: Story) => void
+  onAddStory: (s: Omit<Story, 'id'>) => void
   onViewStory: (id: string) => void
 }) {
   const validation = story.investValidation || MOCK_INVEST_VALIDATION
@@ -272,8 +274,9 @@ function ValidationDetail({ story, onStoryChange, onViewStory }: {
   const failingKeys = keys.filter(k => !validation[k].adheres && MOCK_INVEST_FIXES[k])
   const pendingFixes = failingKeys.filter(k => !acceptedKeys.has(k))
 
-  const acceptFix = (key: string, patch: Partial<Story>) => {
+  const acceptFix = (key: string, patch: Partial<Story>, newStory?: Omit<Story, 'id'>) => {
     onStoryChange({ ...story, ...patch })
+    if (newStory) onAddStory(newStory)
     setAcceptedKeys(prev => new Set([...prev, key]))
   }
 
@@ -368,7 +371,7 @@ function ValidationDetail({ story, onStoryChange, onViewStory }: {
                   item={validation[key]}
                   fix={MOCK_INVEST_FIXES[key]}
                   accepted={acceptedKeys.has(key)}
-                  onAcceptFix={patch => acceptFix(key, patch)}
+                  onAcceptFix={(patch, newStory) => acceptFix(key, patch, newStory)}
                 />
               ))}
             </tbody>
@@ -390,13 +393,21 @@ interface Props {
   storyId: string
   stories: Story[]
   onViewStory: (storyId: string) => void
+  onAddStory?: (epicId: string, story: Story) => void
 }
 
-export default function StoryValidation({ storyId, stories, onViewStory }: Props) {
+export default function StoryValidation({ storyId, stories, onViewStory, onAddStory }: Props) {
   const allStories = stories.length > 0 ? stories : MOCK_STORY_LIST
   const initial = allStories.find(s => s.id === storyId) || allStories[0]
   const [selectedStory, setSelectedStory] = useState<Story>(initial)
   const [storyVersions, setStoryVersions] = useState<Record<string, Story>>({})
+  const [localStories, setLocalStories] = useState<Story[]>(allStories)
+
+  const handleAddStory = (partial: Omit<Story, 'id'>) => {
+    const newStory: Story = { ...partial, id: `story-split-${Date.now()}` }
+    setLocalStories(prev => [...prev, newStory])
+    onAddStory?.(partial.epicId, newStory)
+  }
 
   const getStory = (s: Story) => storyVersions[s.id] || s
 
@@ -416,9 +427,9 @@ export default function StoryValidation({ storyId, stories, onViewStory }: Props
         {/* Left — story list */}
         <div className="w-64 shrink-0 flex flex-col gap-2 overflow-y-auto pr-1">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1 mb-1">
-            {allStories.length} {allStories.length === 1 ? 'Story' : 'Stories'}
+            {localStories.length} {localStories.length === 1 ? 'Story' : 'Stories'}
           </p>
-          {allStories.map(s => {
+          {localStories.map(s => {
             const story = getStory(s)
             const isSelected = s.id === selectedStory.id
             const v = story.investValidation || MOCK_INVEST_VALIDATION
@@ -465,6 +476,7 @@ export default function StoryValidation({ storyId, stories, onViewStory }: Props
             key={selectedStory.id}
             story={getStory(selectedStory)}
             onStoryChange={updated => setStoryVersions(prev => ({ ...prev, [selectedStory.id]: updated }))}
+            onAddStory={handleAddStory}
             onViewStory={onViewStory}
           />
         </div>
