@@ -1,13 +1,19 @@
-export type AIProvider = 'anthropic' | 'azure-openai'
+export type AIProvider = 'anthropic' | 'openai' | 'azure-openai' | 'google' | 'ollama'
 
 export type AssistanceLevel = 0 | 1 | 2 | 3 | 4
 
 export interface APISettings {
   provider: AIProvider
   anthropicKey: string
+  openaiKey: string
+  openaiModel: string
   azureEndpoint: string
   azureKey: string
   azureDeployment: string
+  googleKey: string
+  googleModel: string
+  ollamaEndpoint: string
+  ollamaModel: string
   assistanceLevel: AssistanceLevel
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  Settings as SettingsIcon, BookOpen, FileText, Layers, BookMarked,
-  ShieldCheck, ScrollText, ChevronRight, Sparkles, Menu, X
+  BookOpen, FileText, Layers, BookMarked,
+  ShieldCheck, ScrollText, ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
 } from 'lucide-react'
 import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story } from './types'
 import Settings from './components/Settings'
@@ -14,23 +14,36 @@ import UserStoryDisplay from './components/UserStoryDisplay'
 import { MOCK_EPICS, MOCK_STORY_LIST } from './data/mockData'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
-  { id: 'settings', label: 'Settings', icon: SettingsIcon, description: 'AI provider & preferences' },
-  { id: 'context', label: 'Context', icon: BookOpen, description: 'Domain & tech context' },
-  { id: 'requirements', label: 'Requirements', icon: FileText, description: 'Intake & AI clarification' },
-  { id: 'epics', label: 'Epics', icon: Layers, description: 'Columnar epic view' },
-  { id: 'stories', label: 'Stories', icon: BookMarked, description: 'Story breakdown' },
-  { id: 'validation', label: 'Validation', icon: ShieldCheck, description: 'INVEST analysis' },
-  { id: 'story-display', label: 'User Story', icon: ScrollText, description: 'Agile story card' },
+  { id: 'context',       label: 'Context',      icon: BookOpen,     description: 'Domain & tech context' },
+  { id: 'requirements',  label: 'Requirements',  icon: FileText,     description: 'Intake & AI exploration' },
+  { id: 'epics',         label: 'Epics',         icon: Layers,       description: 'Columnar epic view' },
+  { id: 'stories',       label: 'Stories',       icon: BookMarked,   description: 'Story breakdown' },
+  { id: 'validation',    label: 'Validation',    icon: ShieldCheck,  description: 'INVEST analysis' },
+  { id: 'story-display', label: 'User Story',    icon: ScrollText,   description: 'Agile story card' },
 ]
 
-const STEP_ORDER: AppStep[] = ['settings', 'context', 'requirements', 'epics', 'stories', 'validation', 'story-display']
+const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories', 'validation', 'story-display']
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic:      'Anthropic Claude',
+  openai:         'OpenAI',
+  'azure-openai': 'Azure OpenAI',
+  google:         'Google Gemini',
+  ollama:         'Ollama (Local)',
+}
 
 const DEFAULT_SETTINGS: APISettings = {
   provider: 'anthropic',
   anthropicKey: '',
+  openaiKey: '',
+  openaiModel: 'gpt-4o',
   azureEndpoint: '',
   azureKey: '',
   azureDeployment: '',
+  googleKey: '',
+  googleModel: 'gemini-1.5-pro',
+  ollamaEndpoint: 'http://localhost:11434',
+  ollamaModel: 'llama3',
   assistanceLevel: 2,
 }
 
@@ -43,7 +56,7 @@ const DEFAULT_CONTEXT: ContextCaptureType = {
 
 export default function App() {
   const [state, setState] = useState<AppState>({
-    currentStep: 'settings',
+    currentStep: 'context',
     settings: DEFAULT_SETTINGS,
     context: DEFAULT_CONTEXT,
     rawRequirements: '',
@@ -54,6 +67,7 @@ export default function App() {
     selectedStoryId: null,
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const goTo = (step: AppStep) => {
     setState(p => ({ ...p, currentStep: step }))
@@ -64,7 +78,7 @@ export default function App() {
   const isUnlocked = (step: AppStep) => STEP_ORDER.indexOf(step) <= currentIdx
 
   const handleSettingsSave = (settings: APISettings) => {
-    setState(p => ({ ...p, settings, currentStep: 'context' }))
+    setState(p => ({ ...p, settings }))
   }
 
   const handleContextSave = (context: ContextCaptureType) => {
@@ -109,19 +123,18 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 flex flex-col
+        fixed lg:static inset-y-0 left-0 z-40 w-60 bg-white border-r border-gray-200 flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo */}
-        <div className="p-5 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-white" />
@@ -136,18 +149,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Provider badge */}
-        <div className="px-4 py-3 border-b border-gray-100">
-          <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
-            state.settings.provider === 'anthropic'
-              ? 'bg-brand-50 text-brand-700'
-              : 'bg-blue-50 text-blue-700'
-          }`}>
-            <div className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
-            {state.settings.provider === 'anthropic' ? 'Anthropic Claude' : 'Azure OpenAI'}
-          </div>
-        </div>
-
         {/* Nav */}
         <nav className="flex-1 p-3 overflow-y-auto">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 mb-2">Workflow</p>
@@ -160,11 +161,9 @@ export default function App() {
                 onClick={() => unlocked && goTo(step.id)}
                 disabled={!unlocked}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left mb-1 transition-all ${
-                  active
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : unlocked
-                    ? 'text-gray-700 hover:bg-gray-100'
-                    : 'text-gray-300 cursor-not-allowed'
+                  active ? 'bg-brand-600 text-white shadow-sm'
+                  : unlocked ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-300 cursor-not-allowed'
                 }`}
               >
                 <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold ${
@@ -182,11 +181,19 @@ export default function App() {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-100">
-          <p className="text-xs text-gray-400 text-center">
-            {['Streamlined','Light Touch','Collaborative','Thorough','Deep Dive'][state.settings.assistanceLevel]} mode
-          </p>
+        {/* Subtle footer with settings gear */}
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+            <span className="text-xs text-gray-400 truncate">{PROVIDER_LABELS[state.settings.provider]}</span>
+          </div>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-gray-300 hover:text-gray-500 transition-colors ml-2 shrink-0"
+            title="Settings"
+          >
+            <SettingsIcon className="w-3.5 h-3.5" />
+          </button>
         </div>
       </aside>
 
@@ -203,16 +210,12 @@ export default function App() {
             </div>
             <span className="text-sm font-semibold text-gray-800">RequireAI</span>
           </div>
-          <span className="ml-auto text-xs text-gray-400">
-            {NAV_STEPS.find(s => s.id === state.currentStep)?.label}
-          </span>
+          <button onClick={() => setSettingsOpen(true)} className="ml-auto text-gray-400 hover:text-gray-600">
+            <SettingsIcon className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Page content */}
         <div className="px-2 lg:px-4">
-          {state.currentStep === 'settings' && (
-            <Settings settings={state.settings} onSave={handleSettingsSave} />
-          )}
           {state.currentStep === 'context' && (
             <ContextCaptureComponent context={state.context} onSave={handleContextSave} />
           )}
@@ -259,6 +262,15 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Settings modal */}
+      {settingsOpen && (
+        <Settings
+          settings={state.settings}
+          onSave={handleSettingsSave}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }
