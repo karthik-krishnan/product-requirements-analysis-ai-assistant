@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   ShieldCheck, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp,
   Lightbulb, ArrowRight, ChevronRight, FileText, Sparkles, Check, X,
@@ -301,22 +301,26 @@ function ValidationDetail({ story, settings, onStoryChange, onAddStory, onViewSt
   onViewStory: (id: string) => void
 }) {
   const [validation, setValidation] = useState<INVESTValidation>(story.investValidation || MOCK_INVEST_VALIDATION)
+  const [isMockValidation, setIsMockValidation] = useState(!story.investValidation)
   const [validating, setValidating] = useState(false)
   const [validateError, setValidateError] = useState<string | null>(null)
   const keys = Object.keys(INVEST_META) as INVESTKey[]
   const [acceptedKeys, setAcceptedKeys] = useState<Set<string>>(new Set())
   const [fixAllLoading, setFixAllLoading] = useState(false)
 
-  useEffect(() => {
-    if (!hasValidKey(settings) || story.investValidation) return
+  const runValidation = async () => {
     setValidating(true)
     setValidateError(null)
-    callLLM(buildValidateINVESTPrompt(story), settings)
-      .then(raw => setValidation(parseINVESTValidation(raw)))
-      .catch(err => setValidateError((err as Error).message))
-      .finally(() => setValidating(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [story.id])
+    try {
+      const raw = await callLLM(buildValidateINVESTPrompt(story), settings)
+      setValidation(parseINVESTValidation(raw))
+      setIsMockValidation(false)
+    } catch (err) {
+      setValidateError((err as Error).message)
+    } finally {
+      setValidating(false)
+    }
+  }
 
   const failingKeys = keys.filter(k => !validation[k].adheres && MOCK_INVEST_FIXES[k])
   const pendingFixes = failingKeys.filter(k => !acceptedKeys.has(k))
@@ -348,19 +352,44 @@ function ValidationDetail({ story, settings, onStoryChange, onAddStory, onViewSt
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in-up">
-      {validating && (
-        <div className="flex items-center gap-2 text-xs text-brand-600 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
-          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-          Validating story against INVEST principles with AI…
+      {/* AI validate bar */}
+      {hasValidKey(settings) && (
+        <div className={`flex items-center gap-3 rounded-xl px-4 py-3 border ${
+          isMockValidation ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'
+        }`}>
+          {validating ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
+              <p className="text-xs text-brand-600 flex-1">Validating against INVEST principles with AI…</p>
+            </>
+          ) : isMockValidation ? (
+            <>
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-700 flex-1">Showing sample validation — click to run real AI analysis.</p>
+              <button onClick={runValidation} className="btn-primary flex items-center gap-1.5 text-xs py-1 px-3 shrink-0">
+                <Sparkles className="w-3 h-3" />
+                Validate with AI
+              </button>
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <p className="text-xs text-emerald-700 flex-1">Validated by AI · {settings.provider}</p>
+              <button onClick={runValidation} className="text-xs text-emerald-600 hover:text-emerald-800 underline shrink-0">
+                Re-validate
+              </button>
+            </>
+          )}
         </div>
       )}
       {validateError && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
           <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-semibold text-red-700">INVEST validation failed — showing mock results</p>
-            <p className="text-xs text-red-600 mt-0.5">{validateError}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-red-700">Validation failed</p>
+            <p className="text-xs text-red-600 mt-0.5 break-words">{validateError}</p>
           </div>
+          <button onClick={() => setValidateError(null)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
         </div>
       )}
       {/* Story summary */}
