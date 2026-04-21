@@ -581,6 +581,7 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
 
   const handleAddStory = (partial: Omit<Story, 'id'>) => {
     const newStory: Story = { ...partial, id: `story-split-${Date.now()}` }
+    setStories(prev => [...prev, newStory])
     setLocalStories(prev => [...prev, newStory])
     onAddStory?.(partial.epicId, newStory)
   }
