@@ -116,8 +116,6 @@ export type AppStep =
   | 'requirements'
   | 'epics'
   | 'stories'
-  | 'validation'
-  | 'story-display'
 
 export interface AppState {
   currentStep: AppStep
@@ -129,4 +127,6 @@ export interface AppState {
   epics: Epic[]
   selectedEpicId: string | null
   selectedStoryId: string | null
+  storyValidations: Record<string, INVESTValidation>
+  storyAcceptedFixes: Record<string, string[]>
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   BookOpen, FileText, Layers, BookMarked,
-  ShieldCheck, ScrollText, ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
+  ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
 } from 'lucide-react'
 import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story, INVESTValidation } from './types'
 import Settings from './components/Settings'
@@ -9,20 +9,15 @@ import ContextCaptureComponent from './components/ContextCapture'
 import RequirementsInput from './components/RequirementsInput'
 import EpicsView from './components/EpicsView'
 import StoryBreakdown from './components/StoryBreakdown'
-import StoryValidation from './components/StoryValidation'
-import UserStoryDisplay from './components/UserStoryDisplay'
-import { MOCK_STORY_LIST } from './data/mockData'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
-  { id: 'context',       label: 'Context',      icon: BookOpen,     description: 'Domain & tech context' },
-  { id: 'requirements',  label: 'Requirements',  icon: FileText,     description: 'Intake & AI exploration' },
-  { id: 'epics',         label: 'Epics',         icon: Layers,       description: 'Columnar epic view' },
-  { id: 'stories',       label: 'Stories',       icon: BookMarked,   description: 'Story breakdown' },
-  { id: 'validation',    label: 'Validation',    icon: ShieldCheck,  description: 'INVEST analysis' },
-  { id: 'story-display', label: 'User Story',    icon: ScrollText,   description: 'Agile story card' },
+  { id: 'context',      label: 'Context',      icon: BookOpen,   description: 'Domain & tech context' },
+  { id: 'requirements', label: 'Requirements', icon: FileText,   description: 'Intake & AI exploration' },
+  { id: 'epics',        label: 'Epics',        icon: Layers,     description: 'Columnar epic view' },
+  { id: 'stories',      label: 'Stories',      icon: BookMarked, description: 'Breakdown & validation' },
 ]
 
-const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories', 'validation', 'story-display']
+const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories']
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic:      'Anthropic Claude',
@@ -121,10 +116,6 @@ export default function App() {
     }))
   }
 
-  const handleViewStory = (storyId: string) => {
-    setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'validation' }))
-  }
-
   const handleStoryValidated = (storyId: string, validation: INVESTValidation) =>
     setState(p => ({ ...p, storyValidations: { ...p.storyValidations, [storyId]: validation } }))
 
@@ -136,15 +127,6 @@ export default function App() {
         [storyId]: [...(p.storyAcceptedFixes[storyId] ?? []), key],
       },
     }))
-
-  const handleViewFullStory = (storyId: string) => {
-    setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'story-display' }))
-  }
-
-  const getStoriesForEpic = () => {
-    const epic = state.epics.find(e => e.id === state.selectedEpicId)
-    return epic?.stories || MOCK_STORY_LIST
-  }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -273,20 +255,11 @@ export default function App() {
               epics={state.epics}
               settings={state.settings}
               context={state.context}
-              onStoriesGenerated={handleStoriesGenerated}
-              onViewStory={handleViewStory}
-            />
-          )}
-          {state.currentStep === 'validation' && (
-            <StoryValidation
-              storyId={state.selectedStoryId || ''}
-              stories={getStoriesForEpic()}
-              settings={state.settings}
               storyValidations={state.storyValidations}
               storyAcceptedFixes={state.storyAcceptedFixes}
+              onStoriesGenerated={handleStoriesGenerated}
               onStoryValidated={handleStoryValidated}
               onFixAccepted={handleFixAccepted}
-              onViewStory={handleViewFullStory}
               onAddStory={(epicId, story) => {
                 setState(p => ({
                   ...p,
@@ -295,13 +268,6 @@ export default function App() {
                   ),
                 }))
               }}
-            />
-          )}
-          {state.currentStep === 'story-display' && (
-            <UserStoryDisplay
-              storyId={state.selectedStoryId || ''}
-              stories={getStoriesForEpic()}
-              onBack={() => setState(p => ({ ...p, currentStep: 'validation' }))}
             />
           )}
         </div>

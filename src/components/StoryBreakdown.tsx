@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import {
   BookMarked, ChevronDown, ChevronUp, Send, SkipForward, Sparkles,
   CheckCircle, AlertCircle, Loader2, ShieldCheck, Tag, RefreshCw,
-  MessageSquare, ArrowRight, FileText, X,
+  MessageSquare, FileText, X,
 } from 'lucide-react'
-import type { APISettings, ContextCapture, Epic, Story, ClarifyingQuestion } from '../types'
+import type { APISettings, ContextCapture, Epic, Story, ClarifyingQuestion, INVESTValidation } from '../types'
+import { ValidationSection } from './StoryValidation'
 import { MOCK_EPIC_QUESTIONS, MOCK_STORY_LIST } from '../data/mockData'
 import { getQuestionCount } from '../utils/assistanceLevels'
 import { callLLM, hasValidKey } from '../services/llm/client'
@@ -16,8 +17,12 @@ interface Props {
   epics: Epic[]
   settings: APISettings
   context: ContextCapture
+  storyValidations: Record<string, INVESTValidation>
+  storyAcceptedFixes: Record<string, string[]>
   onStoriesGenerated: (epicId: string, stories: Story[]) => void
-  onViewStory: (storyId: string) => void
+  onStoryValidated: (storyId: string, v: INVESTValidation) => void
+  onFixAccepted: (storyId: string, key: string) => void
+  onAddStory?: (epicId: string, story: Story) => void
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -407,13 +412,20 @@ function StoryDiscussPanel({ story }: { story: Story }) {
 
 // ─── StoryAccordionItem ───────────────────────────────────────────────────────
 
-function StoryAccordionItem({ story, defaultOpen, onValidate }: {
+function StoryAccordionItem({ story, defaultOpen, settings, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory }: {
   story: Story
   defaultOpen: boolean
-  onValidate: (id: string) => void
+  settings: APISettings
+  validation: INVESTValidation | null
+  acceptedKeys: Set<string>
+  onValidated: (v: INVESTValidation) => void
+  onFixAccepted: (key: string) => void
+  onStoryChange: (s: Story) => void
+  onAddStory: (s: Omit<Story, 'id'>) => void
 }) {
-  const [expanded, setExpanded]   = useState(defaultOpen)
-  const [discussing, setDiscussing] = useState(false)
+  const [expanded, setExpanded]         = useState(defaultOpen)
+  const [discussing, setDiscussing]     = useState(false)
+  const [showValidation, setShowValidation] = useState(false)
 
   return (
     <div className={`card overflow-hidden transition-all ${expanded ? 'border-brand-200 shadow-sm' : ''}`}>
@@ -456,15 +468,33 @@ function StoryAccordionItem({ story, defaultOpen, onValidate }: {
               {discussing ? 'Hide chat' : 'Discuss'}
             </button>
             <button
-              onClick={() => onValidate(story.id)}
-              className="btn-primary flex items-center gap-1.5 text-xs py-1.5"
+              onClick={() => setShowValidation(!showValidation)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                showValidation
+                  ? 'bg-brand-100 text-brand-700 border-brand-300'
+                  : 'btn-primary py-1.5'
+              }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              Validate Story
+              {showValidation ? 'Hide Validation' : validation ? 'View Validation' : 'Validate (INVEST)'}
             </button>
           </div>
 
           {discussing && <StoryDiscussPanel story={story} />}
+
+          {showValidation && (
+            <ValidationSection
+              key={`${story.id}-${settings.provider}`}
+              story={story}
+              settings={settings}
+              validation={validation}
+              acceptedKeys={acceptedKeys}
+              onValidated={onValidated}
+              onFixAccepted={onFixAccepted}
+              onStoryChange={onStoryChange}
+              onAddStory={onAddStory}
+            />
+          )}
         </div>
       )}
     </div>
@@ -475,14 +505,24 @@ function StoryAccordionItem({ story, defaultOpen, onValidate }: {
 
 type Phase = 'input' | 'discovering' | 'generating' | 'done'
 
-export default function StoryBreakdown({ epicId, epics, settings, context, onStoriesGenerated, onViewStory }: Props) {
+export default function StoryBreakdown({ epicId, epics, settings, context, storyValidations, storyAcceptedFixes, onStoriesGenerated, onStoryValidated, onFixAccepted, onAddStory }: Props) {
   const epic = epics.find(e => e.id === epicId) || epics[0]
 
   // Restore persisted stories from App state so navigation away/back keeps them
   const existingStories = epic?.stories || []
   const [phase, setPhase]   = useState<Phase>(existingStories.length > 0 ? 'done' : 'input')
   const [stories, setStories] = useState<Story[]>(existingStories)
+  const [storyVersions, setStoryVersions] = useState<Record<string, Story>>({})
+  const [localStories, setLocalStories]   = useState<Story[]>(existingStories)
   const [error, setError]   = useState<string | null>(null)
+
+  const getStory = (s: Story) => storyVersions[s.id] || s
+
+  const handleAddStory = (partial: Omit<Story, 'id'>) => {
+    const newStory: Story = { ...partial, id: `story-split-${Date.now()}` }
+    setLocalStories(prev => [...prev, newStory])
+    onAddStory?.(partial.epicId, newStory)
+  }
 
   const useLLM = hasValidKey(settings)
   const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
@@ -500,12 +540,14 @@ export default function StoryBreakdown({ epicId, epics, settings, context, onSto
         generated = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
       }
       setStories(generated)
+      setLocalStories(generated)
       setPhase('done')
       onStoriesGenerated(epic.id, generated)
     } catch (err) {
       setError((err as Error).message)
       const fallback = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
       setStories(fallback)
+      setLocalStories(fallback)
       setPhase('done')
       onStoriesGenerated(epic.id, fallback)
     }
@@ -603,25 +645,22 @@ export default function StoryBreakdown({ epicId, epics, settings, context, onSto
           </div>
 
           <div className="space-y-3">
-            {stories.map((s, i) => (
+            {localStories.map((s, i) => (
               <StoryAccordionItem
                 key={s.id}
-                story={s}
+                story={getStory(s)}
                 defaultOpen={i === 0}
-                onValidate={onViewStory}
+                settings={settings}
+                validation={storyValidations[s.id] ?? null}
+                acceptedKeys={new Set(storyAcceptedFixes[s.id] ?? [])}
+                onValidated={v => onStoryValidated(s.id, v)}
+                onFixAccepted={key => onFixAccepted(s.id, key)}
+                onStoryChange={updated => setStoryVersions(prev => ({ ...prev, [s.id]: updated }))}
+                onAddStory={handleAddStory}
               />
             ))}
           </div>
 
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={() => onViewStory(stories[0].id)}
-              className="btn-primary flex items-center gap-2"
-            >
-              Validate All Stories
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
         </div>
       )}
     </div>

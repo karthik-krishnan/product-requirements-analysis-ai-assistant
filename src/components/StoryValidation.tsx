@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   ShieldCheck, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp,
-  Lightbulb, ArrowRight, FileText, Sparkles, Check, X,
+  Lightbulb, FileText, Sparkles, Check, X,
   GitBranch, Loader2, Wand2, Zap
 } from 'lucide-react'
 import type { APISettings, Story, INVESTValidation, FixProposal, FieldDiff } from '../types'
@@ -359,9 +359,9 @@ function StoryContent({ story }: { story: Story }) {
 
 // ─── ValidationSection ────────────────────────────────────────────────────────
 
-function ValidationSection({
+export function ValidationSection({
   story, settings, validation, acceptedKeys,
-  onValidated, onFixAccepted, onStoryChange, onAddStory, onViewStory,
+  onValidated, onFixAccepted, onStoryChange, onAddStory,
 }: {
   story: Story
   settings: APISettings
@@ -371,7 +371,6 @@ function ValidationSection({
   onFixAccepted: (key: string) => void
   onStoryChange: (s: Story) => void
   onAddStory: (s: Omit<Story, 'id'>) => void
-  onViewStory: (id: string) => void
 }) {
   const [validating, setValidating]     = useState(false)
   const [validateError, setValidateError] = useState<string | null>(null)
@@ -540,12 +539,6 @@ function ValidationSection({
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button onClick={() => onViewStory(story.id)} className="btn-primary flex items-center gap-2">
-          View Full User Story
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   )
 }
@@ -634,7 +627,6 @@ function StoryAccordionItem({
             onFixAccepted={onFixAccepted}
             onStoryChange={onStoryChange}
             onAddStory={onAddStory}
-            onViewStory={onViewStory}
           />
         </div>
       )}
