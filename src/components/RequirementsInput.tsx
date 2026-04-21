@@ -82,11 +82,7 @@ export default function RequirementsInput({
       } catch (err) {
         setLlmLoading(false)
         setError((err as Error).message)
-        questionsRef.current = MOCK_CLARIFYING_QUESTIONS.slice(0, questionCount)
-        simulateTyping(() => {
-          const q = questionsRef.current[0]
-          addMessage({ role: 'assistant', content: q.question, options: q.options })
-        }, 400)
+        setPhase('input')
       }
     } else {
       questionsRef.current = MOCK_CLARIFYING_QUESTIONS.slice(0, questionCount)
@@ -163,7 +159,6 @@ export default function RequirementsInput({
       }
     } catch (err) {
       setError((err as Error).message)
-      onGenerateEpics(MOCK_EPICS)
     } finally {
       setLlmLoading(false)
     }
@@ -190,7 +185,7 @@ export default function RequirementsInput({
         <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 animate-fade-in-up">
           <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed — using mock data</p>
+            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed</p>
             <p className="text-xs text-red-600 break-words">{error}</p>
           </div>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 shrink-0 text-xs">✕</button>

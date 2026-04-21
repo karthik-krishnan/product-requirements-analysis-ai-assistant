@@ -127,11 +127,9 @@ function DiscoveryChat({ epic, settings, context, onComplete, onDismiss }: {
         questionsRef.current = qs
         setLlmLoading(false)
         simulateTyping(() => addMsg({ role: 'assistant', content: qs[0].question, options: qs[0].options }), 300)
-      } catch {
+      } catch (err) {
         setLlmLoading(false)
-        questionsRef.current = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
-        const q = questionsRef.current[0]
-        simulateTyping(() => addMsg({ role: 'assistant', content: q.question, options: q.options }), 300)
+        addMsg({ role: 'assistant', content: `Sorry, I couldn't connect to the AI. Check your API key in Settings, then try again.` })
       }
     } else {
       questionsRef.current = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
@@ -574,11 +572,7 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
       onStoriesGenerated(epic.id, generated)
     } catch (err) {
       setError((err as Error).message)
-      const fallback = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
-      setStories(fallback)
-      setLocalStories(fallback)
-      setPhase('done')
-      onStoriesGenerated(epic.id, fallback)
+      setPhase('input')
     }
   }
 
@@ -600,7 +594,7 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
         <div className="mt-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 animate-fade-in-up">
           <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed — using sample data</p>
+            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed</p>
             <p className="text-xs text-red-600 break-words">{error}</p>
           </div>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 shrink-0 text-xs">✕</button>
