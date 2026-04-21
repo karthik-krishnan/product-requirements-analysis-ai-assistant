@@ -14,6 +14,18 @@ Open [http://localhost:8080](http://localhost:8080), click **Settings** in the s
 
 ---
 
+## Demo Mode
+
+No API key? No problem. Open the app without configuring a provider and it runs in **demo mode** — all screens are fully navigable using pre-built sample data (an e-commerce platform backlog). It's a good way to explore the workflow before wiring up a real LLM.
+
+To exit demo mode, open **Settings** and add an API key. To reset back to demo mode, clear the key in Settings or run in the browser console:
+
+```js
+localStorage.removeItem('productpilot_settings')
+```
+
+---
+
 ## How It Works
 
 ```
