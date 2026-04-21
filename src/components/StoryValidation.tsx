@@ -397,18 +397,19 @@ export function ValidationSection({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const displayValidation = validation ?? MOCK_INVEST_VALIDATION
   const isReal = validation !== null
+  // Only show mock data in demo mode (no key). With a key, wait for the real result.
+  const displayValidation = validation ?? (hasValidKey(settings) ? null : MOCK_INVEST_VALIDATION)
 
-  const failingKeys   = INVEST_KEYS.filter(k => !displayValidation[k].adheres && MOCK_INVEST_FIXES[k])
+  const failingKeys   = displayValidation ? INVEST_KEYS.filter(k => !displayValidation[k].adheres && MOCK_INVEST_FIXES[k]) : []
   const pendingFixes  = failingKeys.filter(k => !acceptedKeys.has(k))
-  const adheringCount = INVEST_KEYS.filter(k => displayValidation[k].adheres || acceptedKeys.has(k)).length
-  const overallScore  = Math.round(
+  const adheringCount = displayValidation ? INVEST_KEYS.filter(k => displayValidation[k].adheres || acceptedKeys.has(k)).length : 0
+  const overallScore  = displayValidation ? Math.round(
     INVEST_KEYS.reduce((sum, k) => {
       const base = displayValidation[k].score
       return sum + (acceptedKeys.has(k) ? Math.min(base + 35, 95) : base)
     }, 0) / INVEST_KEYS.length
-  )
+  ) : 0
 
   const acceptFix = (key: string, patch: Partial<Story>, newStory?: Omit<Story, 'id'>) => {
     onStoryChange({ ...story, ...patch })
@@ -474,70 +475,74 @@ export function ValidationSection({
         </div>
       )}
 
-      {/* Score strip */}
-      <div className="flex gap-3 items-stretch">
-        <div className="card p-3 text-center flex-1">
-          <p className="text-2xl font-bold text-brand-600 transition-all duration-700">{overallScore}%</p>
-          <p className="text-xs text-gray-400 mt-0.5">INVEST Score</p>
-        </div>
-        <div className="card p-3 text-center flex-1">
-          <div className="flex items-center justify-center gap-1">
-            <CheckCircle className="w-4 h-4 text-emerald-500" />
-            <p className="text-2xl font-bold text-emerald-600">{adheringCount}</p>
+      {displayValidation && (
+        <>
+          {/* Score strip */}
+          <div className="flex gap-3 items-stretch">
+            <div className="card p-3 text-center flex-1">
+              <p className="text-2xl font-bold text-brand-600 transition-all duration-700">{overallScore}%</p>
+              <p className="text-xs text-gray-400 mt-0.5">INVEST Score</p>
+            </div>
+            <div className="card p-3 text-center flex-1">
+              <div className="flex items-center justify-center gap-1">
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                <p className="text-2xl font-bold text-emerald-600">{adheringCount}</p>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">Adhered</p>
+            </div>
+            <div className="card p-3 text-center flex-1">
+              <div className="flex items-center justify-center gap-1">
+                <XCircle className="w-4 h-4 text-orange-400" />
+                <p className="text-2xl font-bold text-orange-500">{INVEST_KEYS.length - adheringCount}</p>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">Need Work</p>
+            </div>
+            {pendingFixes.length > 1 && (
+              <button
+                onClick={fixAll}
+                disabled={fixAllLoading}
+                className="btn-primary flex flex-col items-center justify-center gap-1 px-4 rounded-xl text-xs font-semibold min-w-[88px]"
+              >
+                {fixAllLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                <span>{fixAllLoading ? 'Fixing…' : `Fix All (${pendingFixes.length})`}</span>
+              </button>
+            )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">Adhered</p>
-        </div>
-        <div className="card p-3 text-center flex-1">
-          <div className="flex items-center justify-center gap-1">
-            <XCircle className="w-4 h-4 text-orange-400" />
-            <p className="text-2xl font-bold text-orange-500">{INVEST_KEYS.length - adheringCount}</p>
-          </div>
-          <p className="text-xs text-gray-400 mt-0.5">Need Work</p>
-        </div>
-        {pendingFixes.length > 1 && (
-          <button
-            onClick={fixAll}
-            disabled={fixAllLoading}
-            className="btn-primary flex flex-col items-center justify-center gap-1 px-4 rounded-xl text-xs font-semibold min-w-[88px]"
-          >
-            {fixAllLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-            <span>{fixAllLoading ? 'Fixing…' : `Fix All (${pendingFixes.length})`}</span>
-          </button>
-        )}
-      </div>
 
-      {/* INVEST table */}
-      <div className="card overflow-hidden">
-        <div className="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">INVEST Breakdown</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Principle</th>
-                <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Status</th>
-                <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-24">Score</th>
-                <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2">Feedback & Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {INVEST_KEYS.map(key => (
-                <INVESTRow
-                  key={key}
-                  principleKey={key}
-                  item={displayValidation[key]}
-                  fix={MOCK_INVEST_FIXES[key]}
-                  accepted={acceptedKeys.has(key)}
-                  settings={settings}
-                  story={story}
-                  onAcceptFix={(patch, newStory) => acceptFix(key, patch, newStory)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          {/* INVEST table */}
+          <div className="card overflow-hidden">
+            <div className="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">INVEST Breakdown</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Principle</th>
+                    <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Status</th>
+                    <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-24">Score</th>
+                    <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2">Feedback & Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {INVEST_KEYS.map(key => (
+                    <INVESTRow
+                      key={key}
+                      principleKey={key}
+                      item={displayValidation[key]}
+                      fix={MOCK_INVEST_FIXES[key]}
+                      accepted={acceptedKeys.has(key)}
+                      settings={settings}
+                      story={story}
+                      onAcceptFix={(patch, newStory) => acceptFix(key, patch, newStory)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
     </div>
   )
