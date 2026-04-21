@@ -167,7 +167,7 @@ function INVESTRow({ principleKey, item, fix: initialFix, accepted, settings, st
                 {item.suggestions.length} suggestion{item.suggestions.length > 1 ? 's' : ''}
               </button>
             )}
-            {(hasValidKey(settings) || fix) && !accepted && (
+            {(hasValidKey(settings) || fix) && !accepted && (!item.adheres || item.suggestions.length > 0) && (
               <button
                 onClick={handleFixClick}
                 disabled={loading}
