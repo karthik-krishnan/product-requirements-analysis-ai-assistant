@@ -197,3 +197,7 @@ src/
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+ProductPilot – AI-Powered Product Backlog Assistant · product backlog · agile · requirements analysis · user stories · epics · invest · ai assistant · llm · anthropic · openai · gemini · ollama · react · typescript · jira · excel export · file attachments · product management
