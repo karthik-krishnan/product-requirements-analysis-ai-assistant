@@ -1,28 +1,23 @@
 import { useState } from 'react'
 import {
   BookOpen, FileText, Layers, BookMarked,
-  ShieldCheck, ScrollText, ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
+  ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
 } from 'lucide-react'
-import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story } from './types'
+import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story, INVESTValidation } from './types'
 import Settings from './components/Settings'
 import ContextCaptureComponent from './components/ContextCapture'
 import RequirementsInput from './components/RequirementsInput'
 import EpicsView from './components/EpicsView'
 import StoryBreakdown from './components/StoryBreakdown'
-import StoryValidation from './components/StoryValidation'
-import UserStoryDisplay from './components/UserStoryDisplay'
-import { MOCK_EPICS, MOCK_STORY_LIST } from './data/mockData'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
-  { id: 'context',       label: 'Context',      icon: BookOpen,     description: 'Domain & tech context' },
-  { id: 'requirements',  label: 'Requirements',  icon: FileText,     description: 'Intake & AI exploration' },
-  { id: 'epics',         label: 'Epics',         icon: Layers,       description: 'Columnar epic view' },
-  { id: 'stories',       label: 'Stories',       icon: BookMarked,   description: 'Story breakdown' },
-  { id: 'validation',    label: 'Validation',    icon: ShieldCheck,  description: 'INVEST analysis' },
-  { id: 'story-display', label: 'User Story',    icon: ScrollText,   description: 'Agile story card' },
+  { id: 'context',      label: 'Context',      icon: BookOpen,   description: 'Domain & tech context' },
+  { id: 'requirements', label: 'Requirements', icon: FileText,   description: 'Intake & AI exploration' },
+  { id: 'epics',        label: 'Epics',        icon: Layers,     description: 'Columnar epic view' },
+  { id: 'stories',      label: 'Stories',      icon: BookMarked, description: 'Breakdown & validation' },
 ]
 
-const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories', 'validation', 'story-display']
+const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories']
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic:      'Anthropic Claude',
@@ -30,6 +25,16 @@ const PROVIDER_LABELS: Record<string, string> = {
   'azure-openai': 'Azure OpenAI',
   google:         'Google Gemini',
   ollama:         'Ollama (Local)',
+}
+
+const SETTINGS_KEY = 'productpilot_settings'
+
+function loadSettings(): APISettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+  } catch { /* ignore */ }
+  return DEFAULT_SETTINGS
 }
 
 const DEFAULT_SETTINGS: APISettings = {
@@ -57,7 +62,7 @@ const DEFAULT_CONTEXT: ContextCaptureType = {
 export default function App() {
   const [state, setState] = useState<AppState>({
     currentStep: 'context',
-    settings: DEFAULT_SETTINGS,
+    settings: loadSettings(),
     context: DEFAULT_CONTEXT,
     rawRequirements: '',
     clarifyingQuestions: [],
@@ -65,6 +70,8 @@ export default function App() {
     epics: [],
     selectedEpicId: null,
     selectedStoryId: null,
+    storyValidations: {},
+    storyAcceptedFixes: {},
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -78,6 +85,7 @@ export default function App() {
   const isUnlocked = (step: AppStep) => STEP_ORDER.indexOf(step) <= currentIdx
 
   const handleSettingsSave = (settings: APISettings) => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch { /* ignore */ }
     setState(p => ({ ...p, settings }))
   }
 
@@ -89,8 +97,8 @@ export default function App() {
     setState(p => ({ ...p, clarifyingQuestions: questions, clarifyingComplete: true }))
   }
 
-  const handleGenerateEpics = () => {
-    setState(p => ({ ...p, currentStep: 'epics', epics: MOCK_EPICS }))
+  const handleGenerateEpics = (epics: Epic[]) => {
+    setState(p => ({ ...p, currentStep: 'epics', epics }))
   }
 
   const handleEpicsChange = (epics: Epic[]) => {
@@ -108,18 +116,17 @@ export default function App() {
     }))
   }
 
-  const handleViewStory = (storyId: string) => {
-    setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'validation' }))
-  }
+  const handleStoryValidated = (storyId: string, validation: INVESTValidation) =>
+    setState(p => ({ ...p, storyValidations: { ...p.storyValidations, [storyId]: validation } }))
 
-  const handleViewFullStory = (storyId: string) => {
-    setState(p => ({ ...p, selectedStoryId: storyId, currentStep: 'story-display' }))
-  }
-
-  const getStoriesForEpic = () => {
-    const epic = state.epics.find(e => e.id === state.selectedEpicId)
-    return epic?.stories || MOCK_STORY_LIST
-  }
+  const handleFixAccepted = (storyId: string, key: string) =>
+    setState(p => ({
+      ...p,
+      storyAcceptedFixes: {
+        ...p.storyAcceptedFixes,
+        [storyId]: [...(p.storyAcceptedFixes[storyId] ?? []), key],
+      },
+    }))
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -140,8 +147,8 @@ export default function App() {
               <Sparkles className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-sm font-bold text-gray-900">RequireAI</p>
-              <p className="text-xs text-gray-400">Requirements Studio</p>
+              <p className="text-sm font-bold text-gray-900">ProductPilot</p>
+              <p className="text-xs text-gray-400">Product Backlog Assistant</p>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden absolute top-4 right-4 text-gray-400 hover:text-gray-600">
@@ -212,7 +219,7 @@ export default function App() {
             <div className="w-6 h-6 rounded-lg bg-brand-600 flex items-center justify-center">
               <Sparkles className="w-3 h-3 text-white" />
             </div>
-            <span className="text-sm font-semibold text-gray-800">RequireAI</span>
+            <span className="text-sm font-semibold text-gray-800">ProductPilot</span>
           </div>
           <button onClick={() => setSettingsOpen(true)} className="ml-auto text-gray-400 hover:text-gray-600">
             <SettingsIcon className="w-4 h-4" />
@@ -221,14 +228,15 @@ export default function App() {
 
         <div className="px-2 lg:px-4">
           {state.currentStep === 'context' && (
-            <ContextCaptureComponent context={state.context} onSave={handleContextSave} />
+            <ContextCaptureComponent context={state.context} settings={state.settings} onSave={handleContextSave} />
           )}
           {state.currentStep === 'requirements' && (
             <RequirementsInput
               rawRequirements={state.rawRequirements}
               clarifyingQuestions={state.clarifyingQuestions}
               clarifyingComplete={state.clarifyingComplete}
-              assistanceLevel={state.settings.assistanceLevel}
+              settings={state.settings}
+              context={state.context}
               onRequirementsChange={r => setState(p => ({ ...p, rawRequirements: r }))}
               onClarifyingComplete={handleClarifyingComplete}
               onGenerateEpics={handleGenerateEpics}
@@ -245,16 +253,13 @@ export default function App() {
             <StoryBreakdown
               epicId={state.selectedEpicId}
               epics={state.epics}
-              assistanceLevel={state.settings.assistanceLevel}
+              settings={state.settings}
+              context={state.context}
+              storyValidations={state.storyValidations}
+              storyAcceptedFixes={state.storyAcceptedFixes}
               onStoriesGenerated={handleStoriesGenerated}
-              onViewStory={handleViewStory}
-            />
-          )}
-          {state.currentStep === 'validation' && (
-            <StoryValidation
-              storyId={state.selectedStoryId || ''}
-              stories={getStoriesForEpic()}
-              onViewStory={handleViewFullStory}
+              onStoryValidated={handleStoryValidated}
+              onFixAccepted={handleFixAccepted}
               onAddStory={(epicId, story) => {
                 setState(p => ({
                   ...p,
@@ -263,13 +268,6 @@ export default function App() {
                   ),
                 }))
               }}
-            />
-          )}
-          {state.currentStep === 'story-display' && (
-            <UserStoryDisplay
-              storyId={state.selectedStoryId || ''}
-              stories={getStoriesForEpic()}
-              onBack={() => setState(p => ({ ...p, currentStep: 'validation' }))}
             />
           )}
         </div>

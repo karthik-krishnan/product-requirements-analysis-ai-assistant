@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Layers, ChevronRight, Edit3, MessageSquare, X, Tag, ArrowRight, Sparkles, Check } from 'lucide-react'
+import { Layers, ChevronRight, Edit3, MessageSquare, X, Tag, ArrowRight, Sparkles, Check, Download } from 'lucide-react'
 import type { Epic } from '../types'
 import { MOCK_EPICS } from '../data/mockData'
+import { exportAllToExcel } from '../utils/export'
+import JiraPushModal from './JiraPushModal'
 
 const PRIORITY_COLORS: Record<string, string> = {
   High: 'bg-red-100 text-red-700',
@@ -284,6 +286,7 @@ interface Props {
 export default function EpicsView({ epics: propEpics, onEpicsChange, onBreakIntoStories }: Props) {
   const epics = propEpics.length > 0 ? propEpics : MOCK_EPICS
   const [selectedEpic, setSelectedEpic] = useState<Epic | null>(null)
+  const [showJira, setShowJira] = useState(false)
 
   const handleSave = (updated: Epic) => {
     onEpicsChange(epics.map(e => e.id === updated.id ? updated : e))
@@ -305,6 +308,20 @@ export default function EpicsView({ epics: propEpics, onEpicsChange, onBreakInto
           <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1.5 rounded-full">
             {epics.filter(e => e.priority === 'High').length} High · {epics.filter(e => e.priority === 'Medium').length} Med · {epics.filter(e => e.priority === 'Low').length} Low
           </span>
+          <button
+            onClick={() => exportAllToExcel(epics)}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export Excel
+          </button>
+          <button
+            onClick={() => setShowJira(true)}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <ArrowRight className="w-3.5 h-3.5" />
+            Push to Jira
+          </button>
         </div>
       </div>
 
@@ -334,6 +351,13 @@ export default function EpicsView({ epics: propEpics, onEpicsChange, onBreakInto
           onClose={() => setSelectedEpic(null)}
           onSave={handleSave}
           onBreakIntoStories={epic => { handleSave(epic); setSelectedEpic(null); onBreakIntoStories(epic.id) }}
+        />
+      )}
+
+      {showJira && (
+        <JiraPushModal
+          items={epics.map(e => ({ id: e.id, title: e.title, type: 'Epic' as const }))}
+          onClose={() => setShowJira(false)}
         />
       )}
     </div>

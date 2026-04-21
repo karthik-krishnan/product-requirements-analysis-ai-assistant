@@ -1,19 +1,37 @@
 import { useState, useRef } from 'react'
-import { BookOpen, Cpu, Upload, FileText, X, ChevronRight, Clipboard, CheckCheck } from 'lucide-react'
-import type { ContextCapture as ContextCaptureType, UploadedFile } from '../types'
+import { BookOpen, Cpu, Upload, FileText, X, ChevronRight, Clipboard, CheckCheck, Loader2, AlertTriangle } from 'lucide-react'
+import type { APISettings, ContextCapture as ContextCaptureType, UploadedFile } from '../types'
+import { readFileContent, supportsNativePDF } from '../utils/files'
 
 interface Props {
   context: ContextCaptureType
+  settings: APISettings
   onSave: (c: ContextCaptureType) => void
 }
 
 function FileChip({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
+  const isUnsupported = file.contentType === 'unsupported'
+  const isLoading = file.loading
+
   return (
-    <div className="flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-lg px-3 py-1.5 text-xs">
-      <FileText className="w-3.5 h-3.5 text-brand-500 shrink-0" />
-      <span className="text-brand-700 font-medium truncate max-w-[160px]">{file.name}</span>
-      <span className="text-brand-400">{(file.size / 1024).toFixed(0)} KB</span>
-      <button onClick={onRemove} className="text-brand-300 hover:text-brand-600 ml-1">
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs border ${
+      isUnsupported ? 'bg-red-50 border-red-200' : 'bg-brand-50 border-brand-200'
+    }`}>
+      {isLoading
+        ? <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin shrink-0" />
+        : isUnsupported
+          ? <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+          : <FileText className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+      }
+      <span className={`font-medium truncate max-w-[160px] ${isUnsupported ? 'text-red-600' : 'text-brand-700'}`}>
+        {file.name}
+      </span>
+      {!isLoading && (
+        <span className={isUnsupported ? 'text-red-400' : 'text-brand-400'}>
+          {isUnsupported ? 'unsupported' : `${(file.size / 1024).toFixed(0)} KB`}
+        </span>
+      )}
+      <button onClick={onRemove} className={`ml-1 ${isUnsupported ? 'text-red-300 hover:text-red-600' : 'text-brand-300 hover:text-brand-600'}`}>
         <X className="w-3 h-3" />
       </button>
     </div>
@@ -30,36 +48,46 @@ interface PanelProps {
   onFilesChange: (files: UploadedFile[]) => void
   placeholder: string
   accentColor: string
+  nativePDF: boolean
 }
 
 function ContextPanel({
-  icon, title, subtitle, textValue, onTextChange, files, onFilesChange, placeholder, accentColor
+  icon, title, subtitle, textValue, onTextChange, files, onFilesChange, placeholder, accentColor, nativePDF
 }: PanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [copied, setCopied] = useState(false)
 
-  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || [])
-    const newFiles: UploadedFile[] = selected.map(f => ({
+  const processFiles = async (rawFiles: File[]) => {
+    const placeholders: UploadedFile[] = rawFiles.map(f => ({
       id: Math.random().toString(36).slice(2),
       name: f.name,
       size: f.size,
       type: f.type,
+      loading: true,
     }))
-    onFilesChange([...files, ...newFiles])
+    onFilesChange([...files, ...placeholders])
+
+    const resolved = await Promise.all(
+      rawFiles.map(async (f, i) => {
+        const { content, contentType } = await readFileContent(f)
+        // For non-native-PDF providers, treat PDF as unsupported
+        const effectiveType = contentType === 'pdf' && !nativePDF ? 'unsupported' : contentType
+        return { ...placeholders[i], content, contentType: effectiveType, loading: false } as UploadedFile
+      })
+    )
+
+    onFilesChange([...files, ...resolved])
+  }
+
+  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || [])
+    processFiles(selected)
     e.target.value = ''
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    const dropped = Array.from(e.dataTransfer.files)
-    const newFiles: UploadedFile[] = dropped.map(f => ({
-      id: Math.random().toString(36).slice(2),
-      name: f.name,
-      size: f.size,
-      type: f.type,
-    }))
-    onFilesChange([...files, ...newFiles])
+    processFiles(Array.from(e.dataTransfer.files))
   }
 
   const handlePaste = async () => {
@@ -120,7 +148,9 @@ function ContextPanel({
           <p className="text-xs font-medium text-gray-500 group-hover:text-brand-600 transition-colors">
             Drag & drop or click to upload
           </p>
-          <p className="text-xs text-gray-400 mt-1">PDF, DOCX, TXT, MD — up to 20 MB each</p>
+          <p className="text-xs text-gray-400 mt-1">
+          {nativePDF ? 'PDF, TXT, MD — up to 20 MB each' : 'TXT, MD — up to 20 MB each · PDF requires Anthropic or Gemini'}
+        </p>
           <input
             ref={fileInputRef}
             type="file"
@@ -147,8 +177,9 @@ function ContextPanel({
   )
 }
 
-export default function ContextCapture({ context, onSave }: Props) {
+export default function ContextCapture({ context, settings, onSave }: Props) {
   const [local, setLocal] = useState(context)
+  const nativePDF = supportsNativePDF(settings.provider)
 
   const domainPlaceholder = `Example:
 - Company: RetailCo — mid-market e-commerce platform
@@ -185,6 +216,7 @@ export default function ContextCapture({ context, onSave }: Props) {
           onFilesChange={files => setLocal(p => ({ ...p, domainFiles: files }))}
           placeholder={domainPlaceholder}
           accentColor="bg-emerald-50"
+          nativePDF={nativePDF}
         />
         <ContextPanel
           icon={<Cpu className="w-4.5 h-4.5 text-violet-600" />}
@@ -196,6 +228,7 @@ export default function ContextCapture({ context, onSave }: Props) {
           onFilesChange={files => setLocal(p => ({ ...p, techFiles: files }))}
           placeholder={techPlaceholder}
           accentColor="bg-violet-50"
+          nativePDF={nativePDF}
         />
       </div>
 

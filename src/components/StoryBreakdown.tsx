@@ -1,104 +1,169 @@
 import { useState, useRef, useEffect } from 'react'
-import { BookMarked, ChevronRight, Send, SkipForward, Sparkles, CheckCircle, ArrowRight, MessageSquare } from 'lucide-react'
-import type { AssistanceLevel, Epic, Story, ChatMessage } from '../types'
-import { MOCK_EPICS, MOCK_EPIC_QUESTIONS, MOCK_STORY_LIST } from '../data/mockData'
+import {
+  BookMarked, ChevronDown, ChevronUp, Send, SkipForward, Sparkles,
+  CheckCircle, AlertCircle, Loader2, ShieldCheck, Tag, RefreshCw,
+  MessageSquare, FileText, X, Copy, Download, Check as CheckIcon, Upload,
+} from 'lucide-react'
+import type { APISettings, ContextCapture, Epic, Story, ClarifyingQuestion, INVESTValidation } from '../types'
+import { ValidationSection } from './StoryValidation'
+import { MOCK_EPIC_QUESTIONS, MOCK_STORY_LIST } from '../data/mockData'
+import { storyToMarkdown, copyToClipboard, exportStoriesToExcel } from '../utils/export'
+import JiraPushModal from './JiraPushModal'
 import { getQuestionCount } from '../utils/assistanceLevels'
+import { callLLM, hasValidKey } from '../services/llm/client'
+import { buildClarifyingQuestionsPrompt, parseClarifyingQuestions } from '../prompts/clarifyingQuestions'
+import { buildGenerateStoriesPrompt, parseStories } from '../prompts/generateStories'
 
 interface Props {
   epicId: string
   epics: Epic[]
-  assistanceLevel: AssistanceLevel
+  settings: APISettings
+  context: ContextCapture
+  storyValidations: Record<string, INVESTValidation>
+  storyAcceptedFixes: Record<string, string[]>
   onStoriesGenerated: (epicId: string, stories: Story[]) => void
-  onViewStory: (storyId: string) => void
+  onStoryValidated: (storyId: string, v: INVESTValidation) => void
+  onFixAccepted: (storyId: string, key: string) => void
+  onAddStory?: (epicId: string, story: Story) => void
 }
 
-type Phase = 'input' | 'clarifying' | 'done'
+const PRIORITY_COLORS: Record<string, string> = {
+  High:   'bg-red-100 text-red-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low:    'bg-green-100 text-green-700',
+}
 
-export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLevel, onStoriesGenerated, onViewStory }: Props) {
-  const epics = propEpics.length > 0 ? propEpics : MOCK_EPICS
-  const epic = epics.find(e => e.id === epicId) || epics[1]
+const CATEGORY_COLORS: Record<string, string> = {
+  'Security & Access': 'bg-purple-50 border-purple-200',
+  'Core Product':      'bg-blue-50 border-blue-200',
+  'Commerce':          'bg-orange-50 border-orange-200',
+  'Operations':        'bg-cyan-50 border-cyan-200',
+  'Customer Experience': 'bg-pink-50 border-pink-200',
+  'Engagement':        'bg-yellow-50 border-yellow-200',
+}
 
-  const [phase, setPhase] = useState<Phase>('input')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [userInput, setUserInput] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-  const [currentQIndex, setCurrentQIndex] = useState(0)
-  const [answeredCount, setAnsweredCount] = useState(0)
-  const [stories, setStories] = useState<Story[]>([])
-  const initializedRef = useRef(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+// ─── EpicHeader ───────────────────────────────────────────────────────────────
 
-  const questionCount = useRef(getQuestionCount(assistanceLevel)).current
-  const questions = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
+function EpicHeader({ epic, isLive }: { epic: Epic; isLive: boolean }) {
+  const catClass = CATEGORY_COLORS[epic.category] || 'bg-gray-50 border-gray-200'
+  return (
+    <div className={`card p-5 border ${catClass}`}>
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
+          <BookMarked className="w-5 h-5 text-brand-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className={`badge ${PRIORITY_COLORS[epic.priority]}`}>{epic.priority} Priority</span>
+            <span className="text-xs text-gray-500 font-medium">{epic.category}</span>
+            {isLive && (
+              <span className="ml-auto text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />Live AI
+              </span>
+            )}
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-1.5">{epic.title}</h2>
+          <p className="text-sm text-gray-600 leading-relaxed">{epic.description}</p>
+          {epic.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {epic.tags.map(tag => (
+                <span key={tag} className="flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-500 rounded-full px-2 py-0.5">
+                  <Tag className="w-2.5 h-2.5" />{tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── DiscoveryChat ────────────────────────────────────────────────────────────
+
+type ChatMsg = { id: string; role: 'user' | 'assistant'; content: string; options?: string[]; selectedOption?: string }
+
+function DiscoveryChat({ epic, settings, context, onComplete, onDismiss }: {
+  epic: Epic
+  settings: APISettings
+  context: ContextCapture
+  onComplete: (questions: ClarifyingQuestion[]) => void
+  onDismiss: () => void
+}) {
+  const [messages, setMessages]             = useState<ChatMsg[]>([])
+  const [userInput, setUserInput]           = useState('')
+  const [isTyping, setIsTyping]             = useState(false)
+  const [llmLoading, setLlmLoading]         = useState(false)
+  const [currentQIdx, setCurrentQIdx]       = useState(0)
+  const [answeredCount, setAnsweredCount]   = useState(0)
+  const [answered, setAnswered]             = useState<ClarifyingQuestion[]>([])
+  const questionsRef  = useRef<ClarifyingQuestion[]>([])
+  const bottomRef     = useRef<HTMLDivElement>(null)
+  const startedRef    = useRef(false)
+  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isTyping])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping])
+    if (startedRef.current) return
+    startedRef.current = true
+    startDiscovery()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const startDiscovery = () => {
-    setPhase('clarifying')
-    const intro: ChatMessage = {
-      id: '0',
-      role: 'assistant',
-      content: `Let's dig into the **"${epic.title}"** epic. I have ${questions.length} focused questions to help me generate precise, well-defined stories.`,
-      timestamp: new Date(),
-    }
-    setMessages([intro])
-    setTimeout(() => {
-      setIsTyping(true)
-      setTimeout(() => {
-        setIsTyping(false)
-        setMessages(prev => [...prev, {
-          id: '1',
-          role: 'assistant',
-          content: `**Question 1 of ${questions.length}:** ${questions[0].question}`,
-          options: questions[0].options,
-          timestamp: new Date(),
-        }])
-      }, 1000)
-    }, 400)
-  }
+  const addMsg = (msg: Omit<ChatMsg, 'id'>) =>
+    setMessages(prev => [...prev, { ...msg, id: Math.random().toString(36).slice(2) }])
 
-  const addMsg = (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    setMessages(prev => [...prev, { ...msg, id: Math.random().toString(36).slice(2), timestamp: new Date() }])
-  }
-
-  const simulateTyping = (cb: () => void, delay = 1100) => {
+  const simulateTyping = (cb: () => void, delay = 800) => {
     setIsTyping(true)
     setTimeout(() => { setIsTyping(false); cb() }, delay)
   }
 
-  const advance = (answer: string) => {
-    const next = currentQIndex + 1
-    setAnsweredCount(prev => prev + 1)
-
-    if (next >= questions.length) {
-      simulateTyping(() => {
-        addMsg({ role: 'assistant', content: `Excellent! I have everything I need. Generating stories for this epic now…` })
-        simulateTyping(() => {
-          const generatedStories = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
-          setStories(generatedStories)
-          setPhase('done')
-          onStoriesGenerated(epic.id, generatedStories)
-        }, 1500)
-      })
+  const startDiscovery = async () => {
+    if (hasValidKey(settings) && settings.assistanceLevel > 0) {
+      setLlmLoading(true)
+      addMsg({ role: 'assistant', content: `Let me ask a few focused questions to help define precise stories for **"${epic.title}"**…` })
+      try {
+        const raw = await callLLM(buildClarifyingQuestionsPrompt(`Epic: ${epic.title}\n${epic.description}`, context, questionCount), settings)
+        const qs = parseClarifyingQuestions(raw)
+        questionsRef.current = qs
+        setLlmLoading(false)
+        simulateTyping(() => addMsg({ role: 'assistant', content: qs[0].question, options: qs[0].options }), 300)
+      } catch (err) {
+        setLlmLoading(false)
+        addMsg({ role: 'assistant', content: `Sorry, I couldn't connect to the AI. Check your API key in Settings, then try again.` })
+      }
     } else {
-      setCurrentQIndex(next)
-      simulateTyping(() => {
-        const q = questions[next]
-        addMsg({
-          role: 'assistant',
-          content: `**Question ${next + 1} of ${questions.length}:** ${q.question}`,
-          options: q.options,
-        })
-      })
+      questionsRef.current = MOCK_EPIC_QUESTIONS.slice(0, questionCount)
+      const qs = questionsRef.current
+      addMsg({ role: 'assistant', content: `I have a few questions to help define stories for **"${epic.title}"**.` })
+      simulateTyping(() => addMsg({ role: 'assistant', content: qs[0].question, options: qs[0].options }))
     }
   }
 
-  const handleOptionSelect = (option: string) => {
-    setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, selectedOption: option, options: [] } : m))
-    addMsg({ role: 'user', content: option })
-    advance(option)
+  const advance = (answer: string) => {
+    const qs = questionsRef.current
+    const q  = qs[currentQIdx]
+    const updatedAnswered = [...answered, { ...q, answer }]
+    setAnswered(updatedAnswered)
+    setAnsweredCount(prev => prev + 1)
+    const next = currentQIdx + 1
+    if (next >= qs.length) {
+      simulateTyping(() => {
+        addMsg({ role: 'assistant', content: 'Great, I have everything I need. Generating stories now…' })
+        onComplete(updatedAnswered)
+      })
+    } else {
+      setCurrentQIdx(next)
+      const nextQ = qs[next]
+      simulateTyping(() => addMsg({ role: 'assistant', content: nextQ.question, options: nextQ.options }))
+    }
+  }
+
+  const handleOptionSelect = (opt: string) => {
+    setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, selectedOption: opt, options: [] } : m))
+    addMsg({ role: 'user', content: opt })
+    advance(opt)
   }
 
   const handleSend = () => {
@@ -110,180 +175,577 @@ export default function StoryBreakdown({ epicId, epics: propEpics, assistanceLev
     advance(text)
   }
 
-  const handleSkip = () => {
-    const generatedStories = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
-    setStories(generatedStories)
-    setPhase('done')
-    onStoriesGenerated(epic.id, generatedStories)
-  }
-
-  const PRIORITY_COLORS: Record<string, string> = {
-    High: 'bg-red-100 text-red-700',
-    Medium: 'bg-amber-100 text-amber-700',
-    Low: 'bg-green-100 text-green-700',
-  }
+  const qs = questionsRef.current
+  const isDone = answered.length >= qs.length && qs.length > 0
 
   return (
-    <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in-up">
-      {/* Epic context bar */}
-      <div className="card p-4 mb-6 bg-brand-50 border-brand-200 flex items-center gap-3">
-        <BookMarked className="w-4 h-4 text-brand-500 shrink-0" />
-        <div className="min-w-0">
-          <p className="text-xs text-brand-500 font-medium mb-0.5">Breaking down Epic</p>
-          <p className="text-sm font-semibold text-brand-800 truncate">{epic.title}</p>
-        </div>
-        <div className="ml-auto shrink-0">
-          <span className="text-xs text-brand-400">{epic.category}</span>
+    <div className="card overflow-hidden mt-4">
+      <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Story Discovery</span>
+        <div className="flex items-center gap-3">
+          {qs.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              {qs.map((_, i) => (
+                <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i < answeredCount ? 'bg-brand-500' : i === answeredCount ? 'bg-brand-300' : 'bg-gray-200'}`} />
+              ))}
+            </div>
+          )}
+          <button onClick={() => onComplete(answered)} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+            <SkipForward className="w-3 h-3" />Skip
+          </button>
+          <button onClick={onDismiss} className="text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Input phase — choose mode */}
-      {phase === 'input' && (
-        <div className="card p-6 mb-6 animate-fade-in-up">
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare className="w-4 h-4 text-brand-500" />
-            <span className="text-sm font-medium text-gray-700">How would you like to proceed?</span>
+      <div className="p-4 flex flex-col gap-3 overflow-y-auto max-h-72">
+        {messages.map(msg => (
+          <div key={msg.id} className={`flex gap-2.5 animate-fade-in-up ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5 ${msg.role === 'assistant' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              {msg.role === 'assistant' ? 'AI' : 'Me'}
+            </div>
+            <div className="flex flex-col gap-1.5 max-w-[85%]">
+              <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${msg.role === 'assistant' ? 'bg-brand-50 border border-brand-100 rounded-tl-sm' : 'bg-gray-100 rounded-tr-sm'}`}>
+                {msg.content}
+              </div>
+              {msg.options && msg.options.length > 0 && !msg.selectedOption && !isDone && (
+                <div className="flex flex-wrap gap-1.5">
+                  {msg.options.map(opt => (
+                    <button key={opt} onClick={() => handleOptionSelect(opt)}
+                      className="text-xs border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-full px-2.5 py-1 transition-colors">
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {msg.selectedOption && <span className="badge bg-brand-100 text-brand-600 text-xs">{msg.selectedOption}</span>}
+            </div>
           </div>
-          <p className="text-sm text-gray-500 mb-5">
-            You can explore the epic further with a few targeted questions before generating stories, or go straight to generating them now.
+        ))}
+        {(isTyping || llmLoading) && (
+          <div className="flex gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold">AI</div>
+            <div className="bg-brand-50 border border-brand-100 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1 items-center">
+              <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {!isDone && (
+        <div className="border-t border-gray-100 p-3 flex gap-2">
+          <input
+            type="text"
+            className="input-field flex-1 text-xs"
+            placeholder="Or type your own answer…"
+            value={userInput}
+            onChange={e => setUserInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+          />
+          <button onClick={handleSend} disabled={!userInput.trim()} className="btn-primary px-3 py-1.5">
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── StoryContent (inline, no import dependency) ──────────────────────────────
+
+function StoryContent({ story }: { story: Story }) {
+  return (
+    <div className="space-y-5 py-4">
+      <div className="bg-brand-50 border border-brand-100 rounded-xl p-4">
+        <p className="text-sm text-gray-700 leading-relaxed">
+          As a <strong className="text-brand-700">{story.asA}</strong>, I want to{' '}
+          <strong className="text-brand-700">{story.iWantTo}</strong>, so that{' '}
+          <strong className="text-brand-700">{story.soThat}</strong>.
+        </p>
+      </div>
+
+      {story.acceptanceCriteria.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Acceptance Criteria</h4>
+          <ul className="space-y-1.5">
+            {story.acceptanceCriteria.map((ac, i) => (
+              <li key={i} className="flex gap-2 text-xs text-gray-700 leading-relaxed">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />{ac}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(story.inScope.length > 0 || story.outOfScope.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-2">In Scope</h4>
+            <ul className="space-y-1">
+              {story.inScope.map((item, i) => (
+                <li key={i} className="flex gap-1.5 text-xs text-gray-600">
+                  <span className="text-emerald-500 shrink-0 font-bold">✓</span>{item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-2">Out of Scope</h4>
+            <ul className="space-y-1">
+              {story.outOfScope.map((item, i) => (
+                <li key={i} className="flex gap-1.5 text-xs text-gray-600">
+                  <span className="text-red-400 shrink-0 font-bold">✗</span>{item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {story.assumptions.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Assumptions</h4>
+          <ul className="space-y-1">
+            {story.assumptions.map((a, i) => (
+              <li key={i} className="flex gap-1.5 text-xs text-gray-600">
+                <span className="text-amber-400 shrink-0">•</span>{a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {story.crossFunctionalNeeds.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Cross-functional Needs</h4>
+          <ul className="space-y-1">
+            {story.crossFunctionalNeeds.map((n, i) => (
+              <li key={i} className="flex gap-1.5 text-xs text-gray-600">
+                <span className="text-brand-400 shrink-0">→</span>{n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── StoryDiscussPanel ────────────────────────────────────────────────────────
+
+function StoryDiscussPanel({ story }: { story: Story }) {
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    { id: '0', role: 'assistant', content: `What would you like to discuss about "${story.title}"? I can help clarify scope, refine acceptance criteria, or explore edge cases.` },
+  ])
+  const [input, setInput]     = useState('')
+  const [typing, setTyping]   = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, typing])
+
+  const MOCK_REPLIES = [
+    `Good point. For the "${story.title}" story, I'd recommend also considering the edge case where the user has incomplete profile data — it could affect the acceptance criteria around data validation.`,
+    `That's worth exploring. The scope boundary here is important: we should confirm with the team whether this scenario falls under this story or would be better tracked as a separate dependency.`,
+    `Agreed. I'd suggest adding an explicit acceptance criterion that covers the error state — for example, what the user sees when the action fails. This keeps the story testable.`,
+    `The assumption you raised is valid. I'd recommend documenting it explicitly in the story assumptions so the team is aligned before sprint planning.`,
+  ]
+  const replyIdx = useRef(0)
+
+  const send = () => {
+    if (!input.trim()) return
+    const text = input.trim()
+    setInput('')
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text }])
+    setTyping(true)
+    setTimeout(() => {
+      setTyping(false)
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: MOCK_REPLIES[replyIdx.current % MOCK_REPLIES.length],
+      }])
+      replyIdx.current++
+    }, 1200)
+  }
+
+  return (
+    <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-gray-50 border-b border-gray-100 px-3 py-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discuss Story</p>
+      </div>
+      <div className="p-3 flex flex-col gap-3 overflow-y-auto max-h-56">
+        {messages.map(msg => (
+          <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${msg.role === 'assistant' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              {msg.role === 'assistant' ? 'AI' : 'Me'}
+            </div>
+            <div className={`rounded-xl px-3 py-2 text-xs leading-relaxed max-w-[85%] ${msg.role === 'assistant' ? 'bg-brand-50 border border-brand-100 rounded-tl-sm' : 'bg-gray-100 rounded-tr-sm'}`}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {typing && (
+          <div className="flex gap-2">
+            <div className="w-6 h-6 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold">AI</div>
+            <div className="bg-brand-50 border border-brand-100 rounded-xl rounded-tl-sm px-3 py-2 flex gap-1 items-center">
+              <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <div className="border-t border-gray-100 p-2 flex gap-2">
+        <input
+          type="text"
+          className="input-field flex-1 text-xs"
+          placeholder="Ask about scope, edge cases, or acceptance criteria…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+        />
+        <button onClick={send} disabled={!input.trim()} className="btn-primary px-2.5 py-1.5">
+          <Send className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── StoryAccordionItem ───────────────────────────────────────────────────────
+
+function CopyMarkdownButton({ story }: { story: Story }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    copyToClipboard(storyToMarkdown(story))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-white text-gray-600 border-gray-200 hover:bg-gray-50 transition-all"
+    >
+      {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? 'Copied!' : 'Copy MD'}
+    </button>
+  )
+}
+
+function StoryAccordionItem({ story, defaultOpen, settings, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory }: {
+  story: Story
+  defaultOpen: boolean
+  settings: APISettings
+  validation: INVESTValidation | null
+  acceptedKeys: Set<string>
+  onValidated: (v: INVESTValidation) => void
+  onFixAccepted: (key: string) => void
+  onStoryChange: (s: Story) => void
+  onAddStory: (s: Omit<Story, 'id'>) => void
+}) {
+  const [expanded, setExpanded]         = useState(defaultOpen)
+  const [discussing, setDiscussing]     = useState(false)
+  const [showValidation, setShowValidation] = useState(false)
+  const [showJira, setShowJira]         = useState(false)
+
+  return (
+    <div className={`card overflow-hidden transition-all ${expanded ? 'border-brand-200 shadow-sm' : ''}`}>
+      <button
+        className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${expanded ? 'bg-brand-600' : 'bg-gray-100'}`}>
+          <FileText className={`w-3.5 h-3.5 ${expanded ? 'text-white' : 'text-gray-400'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">{story.title}</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className={`badge ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
+            {story.storyPoints && (
+              <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
+            )}
+            {(() => {
+              if (!validation) {
+                return <span className="text-xs text-gray-400 italic">not validated</span>
+              }
+              const KEYS = ['independent','negotiable','valuable','estimable','small','testable'] as const
+              const score = Math.round(KEYS.reduce((sum, k) => {
+                const base = validation[k].score
+                return sum + (acceptedKeys.has(k) ? Math.min(base + 35, 95) : base)
+              }, 0) / KEYS.length)
+              const issues = KEYS.filter(k => !validation[k].adheres && !acceptedKeys.has(k)).length
+              return (
+                <>
+                  <span className={`text-xs font-bold ${score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+                    {score}%
+                  </span>
+                  {issues > 0 ? (
+                    <span className="text-xs text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5">
+                      {issues} issue{issues > 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-1.5 py-0.5">
+                      All clear
+                    </span>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-5 border-t border-gray-100 animate-fade-in-up">
+          <StoryContent story={story} />
+
+          <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-gray-100">
+            <button
+              onClick={() => setDiscussing(!discussing)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                discussing
+                  ? 'bg-gray-100 text-gray-700 border-gray-300'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              {discussing ? 'Hide chat' : 'Discuss'}
+            </button>
+            <button
+              onClick={() => setShowValidation(!showValidation)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                showValidation
+                  ? 'bg-brand-100 text-brand-700 border-brand-300'
+                  : 'btn-primary py-1.5'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {showValidation ? 'Hide Validation' : validation ? 'View Validation' : 'Validate (INVEST)'}
+            </button>
+            <CopyMarkdownButton story={story} />
+            <button
+              onClick={() => setShowJira(true)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Push to Jira
+            </button>
+          </div>
+
+          {discussing && <StoryDiscussPanel story={story} />}
+
+          {showJira && (
+            <JiraPushModal
+              items={[{ id: story.id, title: story.title, type: 'Story' }]}
+              onClose={() => setShowJira(false)}
+            />
+          )}
+
+          {showValidation && (
+            <ValidationSection
+              key={`${story.id}-${settings.provider}`}
+              story={story}
+              settings={settings}
+              validation={validation}
+              acceptedKeys={acceptedKeys}
+              onValidated={onValidated}
+              onFixAccepted={onFixAccepted}
+              onStoryChange={onStoryChange}
+              onAddStory={onAddStory}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── StoryBreakdown (main export) ─────────────────────────────────────────────
+
+type Phase = 'input' | 'discovering' | 'generating' | 'done'
+
+export default function StoryBreakdown({ epicId, epics, settings, context, storyValidations, storyAcceptedFixes, onStoriesGenerated, onStoryValidated, onFixAccepted, onAddStory }: Props) {
+  const epic = epics.find(e => e.id === epicId) || epics[0]
+
+  // Restore persisted stories from App state so navigation away/back keeps them
+  const existingStories = epic?.stories || []
+  const [phase, setPhase]   = useState<Phase>(existingStories.length > 0 ? 'done' : 'input')
+  const [stories, setStories] = useState<Story[]>(existingStories)
+  const [storyVersions, setStoryVersions] = useState<Record<string, Story>>({})
+  const [localStories, setLocalStories]   = useState<Story[]>(existingStories)
+  const [error, setError]   = useState<string | null>(null)
+  const [showJira, setShowJira] = useState(false)
+
+  const getStory = (s: Story) => storyVersions[s.id] || s
+
+  const handleAddStory = (partial: Omit<Story, 'id'>) => {
+    const newStory: Story = { ...partial, id: `story-split-${Date.now()}` }
+    setLocalStories(prev => [...prev, newStory])
+    onAddStory?.(partial.epicId, newStory)
+  }
+
+  const useLLM = hasValidKey(settings)
+  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
+
+  const generateStories = async (questions: ClarifyingQuestion[]) => {
+    setPhase('generating')
+    setError(null)
+    try {
+      let generated: Story[]
+      if (useLLM) {
+        const raw = await callLLM(buildGenerateStoriesPrompt(epic, context, questions), settings)
+        generated = parseStories(raw, epic.id)
+      } else {
+        await new Promise(r => setTimeout(r, 1500))
+        generated = MOCK_STORY_LIST.map(s => ({ ...s, epicId: epic.id }))
+      }
+      setStories(generated)
+      setLocalStories(generated)
+      setPhase('done')
+      onStoriesGenerated(epic.id, generated)
+    } catch (err) {
+      setError((err as Error).message)
+      setPhase('input')
+    }
+  }
+
+  return (
+    <div className="py-6 px-4 max-w-4xl mx-auto animate-fade-in-up">
+      {/* Page header */}
+      <div className="flex items-center gap-3 mb-5">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Story Breakdown</h1>
+          <p className="text-xs text-gray-500">Review the epic, then generate and refine user stories</p>
+        </div>
+      </div>
+
+      {/* Epic */}
+      <EpicHeader epic={epic} isLive={useLLM} />
+
+      {/* Error banner */}
+      {error && (
+        <div className="mt-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 animate-fade-in-up">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-red-700 mb-0.5">AI call failed</p>
+            <p className="text-xs text-red-600 break-words">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 shrink-0 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Input phase: choose how to generate */}
+      {phase === 'input' && (
+        <div className="card p-6 mt-4 animate-fade-in-up">
+          <p className="text-sm font-medium text-gray-700 mb-1">How would you like to generate stories?</p>
+          <p className="text-xs text-gray-500 mb-5">
+            Generate directly from the epic, or explore with a few targeted questions first for more precise output.
           </p>
           <div className="flex items-center gap-3">
-            <button onClick={handleSkip} className="btn-secondary flex items-center gap-2">
-              <SkipForward className="w-4 h-4" />
-              Generate Stories Directly
+            <button
+              onClick={() => generateStories([])}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              Generate Stories Now
             </button>
-            {assistanceLevel > 0 && (
-              <button onClick={startDiscovery} className="btn-primary flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Explore & Brainstorm
+            {settings.assistanceLevel > 0 && (
+              <button
+                onClick={() => setPhase('discovering')}
+                className="btn-ghost flex items-center gap-2 text-brand-600 border border-brand-200 hover:bg-brand-50"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Explore First
               </button>
             )}
           </div>
         </div>
       )}
 
-      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 ${phase === 'input' && stories.length === 0 ? 'hidden' : ''}`}>
-        {/* Left: Chat */}
-        <div className="card overflow-hidden flex flex-col">
-          <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Story Discovery</span>
-            {phase === 'clarifying' && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  {questions.map((_, i) => (
-                    <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i < answeredCount ? 'bg-brand-500' : i === answeredCount ? 'bg-brand-300' : 'bg-gray-200'}`} />
-                  ))}
-                </div>
-                <button onClick={handleSkip} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                  <SkipForward className="w-3 h-3" />
-                  Skip
-                </button>
-              </div>
-            )}
+      {/* Discovery chat phase */}
+      {phase === 'discovering' && (
+        <DiscoveryChat
+          epic={epic}
+          settings={settings}
+          context={context}
+          onComplete={generateStories}
+          onDismiss={() => setPhase('input')}
+        />
+      )}
+
+      {/* Generating spinner */}
+      {phase === 'generating' && (
+        <div className="card p-10 mt-4 flex flex-col items-center gap-3 animate-fade-in-up">
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
+          <p className="text-sm text-gray-500">{useLLM ? 'AI is generating stories…' : 'Generating sample stories…'}</p>
+        </div>
+      )}
+
+      {/* Done: story accordion */}
+      {phase === 'done' && (
+        <div className="mt-6 animate-fade-in-up">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand-500" />
+              <span className="text-sm font-semibold text-gray-700">
+                {stories.length} {stories.length === 1 ? 'Story' : 'Stories'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => exportStoriesToExcel(localStories.map(s => getStory(s)), epic?.title)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export Excel
+              </button>
+              <button
+                onClick={() => setShowJira(true)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Push to Jira
+              </button>
+              <button
+                onClick={() => { setStories([]); setPhase('input') }}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Regenerate
+              </button>
+            </div>
           </div>
 
-          <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto min-h-[300px] max-h-[380px]">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex gap-2.5 animate-fade-in-up ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5 ${msg.role === 'assistant' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
-                  {msg.role === 'assistant' ? 'AI' : 'Me'}
-                </div>
-                <div className="flex flex-col gap-1.5 max-w-[85%]">
-                  <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${msg.role === 'assistant' ? 'bg-brand-50 border border-brand-100 rounded-tl-sm' : 'bg-gray-100 rounded-tr-sm'}`}>
-                    {msg.content}
-                  </div>
-                  {msg.options && msg.options.length > 0 && !msg.selectedOption && phase === 'clarifying' && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {msg.options.map(opt => (
-                        <button key={opt} onClick={() => handleOptionSelect(opt)} className="text-xs border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-full px-2.5 py-1 transition-colors">
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {msg.selectedOption && <span className="badge bg-brand-100 text-brand-600 text-xs">{msg.selectedOption}</span>}
-                </div>
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold">AI</div>
-                <div className="bg-brand-50 border border-brand-100 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1 items-center">
-                  <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          {phase === 'clarifying' && (
-            <div className="border-t border-gray-100 p-3 flex gap-2">
-              <input
-                type="text"
-                className="input-field flex-1 text-xs"
-                placeholder="Or type your own answer…"
-                value={userInput}
-                onChange={e => setUserInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSend()}
+          <div className="space-y-3">
+            {localStories.map((s, i) => (
+              <StoryAccordionItem
+                key={s.id}
+                story={getStory(s)}
+                defaultOpen={i === 0}
+                settings={settings}
+                validation={storyValidations[s.id] ?? null}
+                acceptedKeys={new Set(storyAcceptedFixes[s.id] ?? [])}
+                onValidated={v => onStoryValidated(s.id, v)}
+                onFixAccepted={key => onFixAccepted(s.id, key)}
+                onStoryChange={updated => setStoryVersions(prev => ({ ...prev, [s.id]: updated }))}
+                onAddStory={handleAddStory}
               />
-              <button onClick={handleSend} disabled={!userInput.trim()} className="btn-primary px-3 py-1.5">
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Generated Stories */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2 px-1">
-            <Sparkles className="w-4 h-4 text-brand-500" />
-            <span className="text-sm font-semibold text-gray-700">Generated Stories</span>
-            {stories.length > 0 && (
-              <span className="badge bg-brand-100 text-brand-600">{stories.length}</span>
-            )}
+            ))}
           </div>
 
-          {stories.length === 0 ? (
-            <div className="card p-8 flex flex-col items-center justify-center text-center gap-3 border-dashed">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-gray-300" />
-              </div>
-              <p className="text-sm text-gray-400">Stories will appear here after the AI clarification is complete</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {stories.map((story, i) => (
-                <div
-                  key={story.id}
-                  className="story-card animate-fade-in-up cursor-pointer hover:shadow-md transition-shadow"
-                  style={{ animationDelay: `${i * 100}ms` }}
-                  onClick={() => onViewStory(story.id)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className={`badge text-xs ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
-                    {story.storyPoints && (
-                      <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{story.storyPoints} pts</span>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium text-gray-800">{story.title}</p>
-                  <p className="text-xs text-gray-500 line-clamp-2">
-                    As a <em>{story.asA}</em>, I want to {story.iWantTo}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-xs text-gray-400">{story.acceptanceCriteria.length} acceptance criteria</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-brand-400 ml-auto" />
-                  </div>
-                </div>
-              ))}
-              <button onClick={() => onViewStory(stories[0].id)} className="btn-primary flex items-center justify-center gap-2 mt-1">
-                <ArrowRight className="w-4 h-4" />
-                Validate & View Stories
-              </button>
-            </div>
-          )}
         </div>
-      </div>
+      )}
+
+      {showJira && (
+        <JiraPushModal
+          items={localStories.map(s => ({ id: s.id, title: getStory(s).title, type: 'Story' as const }))}
+          onClose={() => setShowJira(false)}
+        />
+      )}
     </div>
   )
 }

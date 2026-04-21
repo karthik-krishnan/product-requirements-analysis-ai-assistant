@@ -29,6 +29,9 @@ export interface UploadedFile {
   name: string
   size: number
   type: string
+  content?: string                       // plain text (TXT/MD) or base64 (PDF)
+  contentType?: 'text' | 'pdf' | 'unsupported'
+  loading?: boolean
 }
 
 export interface ChatMessage {
@@ -116,8 +119,6 @@ export type AppStep =
   | 'requirements'
   | 'epics'
   | 'stories'
-  | 'validation'
-  | 'story-display'
 
 export interface AppState {
   currentStep: AppStep
@@ -129,4 +130,6 @@ export interface AppState {
   epics: Epic[]
   selectedEpicId: string | null
   selectedStoryId: string | null
+  storyValidations: Record<string, INVESTValidation>
+  storyAcceptedFixes: Record<string, string[]>
 }
