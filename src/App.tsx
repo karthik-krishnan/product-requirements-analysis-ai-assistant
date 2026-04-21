@@ -32,6 +32,16 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama:         'Ollama (Local)',
 }
 
+const SETTINGS_KEY = 'requireai_settings'
+
+function loadSettings(): APISettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+  } catch { /* ignore */ }
+  return DEFAULT_SETTINGS
+}
+
 const DEFAULT_SETTINGS: APISettings = {
   provider: 'anthropic',
   anthropicKey: '',
@@ -57,7 +67,7 @@ const DEFAULT_CONTEXT: ContextCaptureType = {
 export default function App() {
   const [state, setState] = useState<AppState>({
     currentStep: 'context',
-    settings: DEFAULT_SETTINGS,
+    settings: loadSettings(),
     context: DEFAULT_CONTEXT,
     rawRequirements: '',
     clarifyingQuestions: [],
@@ -80,6 +90,7 @@ export default function App() {
   const isUnlocked = (step: AppStep) => STEP_ORDER.indexOf(step) <= currentIdx
 
   const handleSettingsSave = (settings: APISettings) => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch { /* ignore */ }
     setState(p => ({ ...p, settings }))
   }
 
