@@ -1,5 +1,7 @@
 # ProductPilot — Product Backlog Assistant
 
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
 ProductPilot is an AI-powered product backlog assistant that turns raw requirements into structured, INVEST-compliant agile artefacts. Connect your own LLM API key and go from a high-level brief to fully detailed epics and user stories in minutes.
 
 ---
@@ -189,3 +191,9 @@ src/
 ├── types/index.ts
 └── App.tsx
 ```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
