@@ -262,17 +262,23 @@ export default function RequirementsInput({
           </div>
 
           {phase === 'clarifying' && (
-            <div className="border-t border-gray-100 p-4 flex gap-3">
+            <div className="border-t border-gray-100 p-4 flex gap-3 items-center">
               <input
                 type="text"
                 className="input-field flex-1"
-                placeholder="Or type your own answer…"
+                placeholder="Type your own answer…"
                 value={userInput}
                 onChange={e => setUserInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
               />
               <button onClick={handleSend} disabled={!userInput.trim()} className="btn-primary px-3">
                 <Send className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => advanceQuestion('(skipped)')}
+                className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
+              >
+                Skip
               </button>
             </div>
           )}

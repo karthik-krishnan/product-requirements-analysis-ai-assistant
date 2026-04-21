@@ -29,7 +29,7 @@ Return this exact JSON schema:
     {
       "id": "q1",
       "question": "<specific, actionable question addressing a gap>",
-      "options": ["<concrete option A>", "<concrete option B>", "<concrete option C>", "Other (please specify)"]
+      "options": ["<concrete option A>", "<concrete option B>", "<concrete option C>"]
     }
   ]
 }
@@ -37,7 +37,7 @@ Return this exact JSON schema:
 Rules:
 - Generate exactly ${count} question(s).
 - Each question must address a distinct ambiguity: user types, business rules, integrations, edge cases, constraints, or success metrics.
-- Provide 3–4 concrete, mutually exclusive options per question. Always include "Other (please specify)" as the last option.
+- Provide 3–4 concrete, mutually exclusive options per question.
 - Do not ask about things already clearly stated in the requirements.
 - Questions should be decision-forcing — each answer should meaningfully change what gets built.`,
     },
