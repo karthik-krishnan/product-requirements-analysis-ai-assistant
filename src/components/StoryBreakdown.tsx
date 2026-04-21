@@ -446,7 +446,33 @@ function StoryAccordionItem({ story, defaultOpen, settings, validation, accepted
             {story.storyPoints && (
               <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
             )}
-            <span className="text-xs text-gray-400">{story.acceptanceCriteria.length} AC</span>
+            {(() => {
+              if (!validation) {
+                return <span className="text-xs text-gray-400 italic">not validated</span>
+              }
+              const KEYS = ['independent','negotiable','valuable','estimable','small','testable'] as const
+              const score = Math.round(KEYS.reduce((sum, k) => {
+                const base = validation[k].score
+                return sum + (acceptedKeys.has(k) ? Math.min(base + 35, 95) : base)
+              }, 0) / KEYS.length)
+              const issues = KEYS.filter(k => !validation[k].adheres && !acceptedKeys.has(k)).length
+              return (
+                <>
+                  <span className={`text-xs font-bold ${score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+                    {score}%
+                  </span>
+                  {issues > 0 ? (
+                    <span className="text-xs text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5">
+                      {issues} issue{issues > 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-1.5 py-0.5">
+                      All clear
+                    </span>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
         {expanded
