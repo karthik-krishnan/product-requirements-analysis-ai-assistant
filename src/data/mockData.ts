@@ -31,6 +31,26 @@ export const MOCK_CLARIFYING_QUESTIONS: ClarifyingQuestion[] = [
       'Enterprise (10,000+ concurrent users)',
     ],
   },
+  {
+    id: 'q4',
+    question: 'How should the system handle integrations with existing tools? Are there specific systems that must be supported at launch?',
+    options: [
+      'Must integrate with existing ERP/CRM at launch',
+      'API-first — third parties integrate with us',
+      'Standalone for now, integrations in Phase 2',
+      'Specific integrations to be confirmed with IT',
+    ],
+  },
+  {
+    id: 'q5',
+    question: 'What is the release strategy — big-bang launch, phased rollout, or feature-flagged gradual release?',
+    options: [
+      'Big-bang — full release on a fixed date',
+      'Phased rollout by user segment or region',
+      'Feature-flagged, gradual rollout by %',
+      'To be decided by product and ops teams',
+    ],
+  },
 ]
 
 export const MOCK_EPIC_QUESTIONS: ClarifyingQuestion[] = [
@@ -62,6 +82,26 @@ export const MOCK_EPIC_QUESTIONS: ClarifyingQuestion[] = [
       '< 3 seconds acceptable, 99.5% SLA',
       'Best effort, no strict SLA yet',
       'To be defined with architecture team',
+    ],
+  },
+  {
+    id: 'eq4',
+    question: 'How should errors and edge cases be surfaced to the user within this epic — silent retry, user notification, or escalation?',
+    options: [
+      'Silent retry with fallback, no user disruption',
+      'In-app notification with retry option',
+      'Full error page with support contact',
+      'Depends on error severity — to be defined per flow',
+    ],
+  },
+  {
+    id: 'eq5',
+    question: 'Are there specific analytics or instrumentation requirements — what user events or conversion metrics must be tracked?',
+    options: [
+      'Standard page views and click events only',
+      'Full funnel tracking with conversion goals',
+      'Custom events defined by the analytics team',
+      'No specific analytics requirements yet',
     ],
   },
 ]

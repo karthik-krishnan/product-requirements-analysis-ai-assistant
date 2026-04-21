@@ -40,8 +40,6 @@ export default function RequirementsInput({
   const bottomRef = useRef<HTMLDivElement>(null)
   const questionsRef = useRef<ClarifyingQuestion[]>([])
 
-  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
@@ -56,6 +54,7 @@ export default function RequirementsInput({
   }
 
   const startClarifying = async () => {
+    const questionCount = getQuestionCount(settings.assistanceLevel)
     onRequirementsChange(localReqs)
     setPhase('clarifying')
     setError(null)

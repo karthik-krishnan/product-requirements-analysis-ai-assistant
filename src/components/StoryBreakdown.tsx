@@ -99,7 +99,6 @@ function DiscoveryChat({ epic, settings, context, onComplete, onDismiss }: {
   const questionsRef  = useRef<ClarifyingQuestion[]>([])
   const bottomRef     = useRef<HTMLDivElement>(null)
   const startedRef    = useRef(false)
-  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isTyping])
 
@@ -119,6 +118,7 @@ function DiscoveryChat({ epic, settings, context, onComplete, onDismiss }: {
   }
 
   const startDiscovery = async () => {
+    const questionCount = getQuestionCount(settings.assistanceLevel)
     setLlmLoading(true)
     addMsg({ role: 'assistant', content: `Let me ask a few focused questions to help define precise stories for **"${epic.title}"**…` })
     try {
@@ -585,8 +585,6 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
     setLocalStories(prev => [...prev, newStory])
     onAddStory?.(partial.epicId, newStory)
   }
-
-  const questionCount = useRef(getQuestionCount(settings.assistanceLevel)).current
 
   const generateStories = async (questions: ClarifyingQuestion[]) => {
     setPhase('generating')
