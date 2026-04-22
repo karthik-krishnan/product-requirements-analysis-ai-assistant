@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
-  BookMarked, ChevronDown, ChevronUp, Send, SkipForward, Sparkles,
+  BookMarked, Send, SkipForward, Sparkles,
   CheckCircle, AlertCircle, Loader2, ShieldCheck, Tag, RefreshCw,
   MessageSquare, FileText, X, Copy, Download, Check as CheckIcon, Upload, Edit3, Save,
 } from 'lucide-react'
@@ -459,7 +460,86 @@ function EditableList({ label, field, draft, setDraft, storyId }: {
   )
 }
 
-// ─── StoryAccordionItem ───────────────────────────────────────────────────────
+// ─── StoryCard ────────────────────────────────────────────────────────────────
+
+const INVEST_KEYS = ['independent','negotiable','valuable','estimable','small','testable'] as const
+
+function investScore(validation: INVESTValidation, acceptedKeys: Set<string>) {
+  return Math.round(INVEST_KEYS.reduce((sum, k) => {
+    const base = validation[k].score
+    return sum + (acceptedKeys.has(k) ? Math.min(base + 35, 95) : base)
+  }, 0) / INVEST_KEYS.length)
+}
+
+function StoryCard({ story, index, validation, acceptedKeys, onView, onValidate }: {
+  story: Story
+  index: number
+  validation: INVESTValidation | null
+  acceptedKeys: Set<string>
+  onView: () => void
+  onValidate: () => void
+}) {
+  const score = validation ? investScore(validation, acceptedKeys) : null
+  const issues = validation ? INVEST_KEYS.filter(k => !validation[k].adheres && !acceptedKeys.has(k)).length : 0
+
+  return (
+    <div
+      className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer animate-fade-in-up"
+      style={{ animationDelay: `${index * 60}ms` }}
+      onClick={onView}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className={`badge ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
+        <div className="flex items-center gap-1.5">
+          {story.storyPoints != null && (
+            <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
+          )}
+          {score !== null && (
+            <span className={`text-xs font-bold ${score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+              {score}%
+            </span>
+          )}
+          {score !== null && issues === 0 && (
+            <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-1.5 py-0.5">✓</span>
+          )}
+          {score !== null && issues > 0 && (
+            <span className="text-xs text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5">{issues}</span>
+          )}
+        </div>
+      </div>
+
+      <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{story.title}</h3>
+
+      <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+        As a <span className="font-medium text-gray-700">{story.asA}</span>, {story.iWantTo}
+      </p>
+
+      {story.acceptanceCriteria.length > 0 && (
+        <p className="text-xs text-gray-400 mt-auto">{story.acceptanceCriteria.length} acceptance criteria</p>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={e => { e.stopPropagation(); onView() }}
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-gray-600 border border-gray-200 bg-white rounded-lg py-1.5 hover:bg-gray-50 transition-colors"
+        >
+          <FileText className="w-3.5 h-3.5" /> View / Edit
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onValidate() }}
+          className="flex items-center justify-center gap-1.5 text-xs text-brand-600 border border-brand-200 bg-brand-50 rounded-lg py-1.5 px-3 hover:bg-brand-100 transition-colors"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          {score === null ? 'Validate' : 'Re-validate'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── StoryDetailModal ─────────────────────────────────────────────────────────
+
+type StoryTab = 'view' | 'edit' | 'discuss' | 'validate'
 
 function CopyMarkdownButton({ story }: { story: Story }) {
   const [copied, setCopied] = useState(false)
@@ -479,9 +559,8 @@ function CopyMarkdownButton({ story }: { story: Story }) {
   )
 }
 
-function StoryAccordionItem({ story, defaultOpen, settings, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory }: {
+function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory, onClose, initialTab = 'view' }: {
   story: Story
-  defaultOpen: boolean
   settings: APISettings
   validation: INVESTValidation | null
   acceptedKeys: Set<string>
@@ -489,78 +568,83 @@ function StoryAccordionItem({ story, defaultOpen, settings, validation, accepted
   onFixAccepted: (key: string) => void
   onStoryChange: (s: Story) => void
   onAddStory: (s: Omit<Story, 'id'>) => void
+  onClose: () => void
+  initialTab?: StoryTab
 }) {
-  const [expanded, setExpanded]             = useState(defaultOpen)
-  const [discussing, setDiscussing]         = useState(false)
-  const [showValidation, setShowValidation] = useState(false)
-  const [showJira, setShowJira]             = useState(false)
-  const [editing, setEditing]               = useState(false)
-  const [draft, setDraft]                   = useState(story)
+  const [tab, setTab] = useState<StoryTab>(initialTab)
+  const [draft, setDraft] = useState(story)
+  const [showJira, setShowJira] = useState(false)
 
-  useEffect(() => { if (!editing) setDraft(story) }, [story, editing])
+  useEffect(() => { setDraft(story) }, [story])
 
-  const handleSave = () => { onStoryChange(draft); setEditing(false) }
-  const handleDiscard = () => { setDraft(story); setEditing(false) }
+  const handleSave = () => { onStoryChange(draft) }
 
-  return (
-    <div className={`card overflow-hidden transition-all ${expanded ? 'border-brand-200 shadow-sm' : ''}`}>
-      <button
-        className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${expanded ? 'bg-brand-600' : 'bg-gray-100'}`}>
-          <FileText className={`w-3.5 h-3.5 ${expanded ? 'text-white' : 'text-gray-400'}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">{story.title}</p>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className={`badge ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
-            {story.storyPoints && (
-              <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
-            )}
-            {(() => {
-              if (!validation) {
-                return <span className="text-xs text-gray-400 italic">not validated</span>
-              }
-              const KEYS = ['independent','negotiable','valuable','estimable','small','testable'] as const
-              const score = Math.round(KEYS.reduce((sum, k) => {
-                const base = validation[k].score
-                return sum + (acceptedKeys.has(k) ? Math.min(base + 35, 95) : base)
-              }, 0) / KEYS.length)
-              const issues = KEYS.filter(k => !validation[k].adheres && !acceptedKeys.has(k)).length
-              return (
-                <>
-                  <span className={`text-xs font-bold ${score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
-                    {score}%
-                  </span>
-                  {issues > 0 ? (
-                    <span className="text-xs text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5">
-                      {issues} issue{issues > 1 ? 's' : ''}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-1.5 py-0.5">
-                      All clear
-                    </span>
-                  )}
-                </>
-              )
-            })()}
+  const TABS: { id: StoryTab; label: string; icon: React.ElementType }[] = [
+    { id: 'view',     label: 'View',     icon: FileText },
+    { id: 'edit',     label: 'Edit',     icon: Edit3 },
+    { id: 'discuss',  label: 'Discuss',  icon: MessageSquare },
+    { id: 'validate', label: 'Validate', icon: ShieldCheck },
+  ]
+
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[95vh] animate-fade-in-up">
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-gray-100">
+          <div className="flex-1 min-w-0 pr-4">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className={`badge ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
+              {story.storyPoints != null && (
+                <span className="badge bg-gray-100 text-gray-600">{story.storyPoints} pts</span>
+              )}
+              {validation && (
+                <span className={`text-xs font-bold ${investScore(validation, acceptedKeys) >= 80 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  INVEST {investScore(validation, acceptedKeys)}%
+                </span>
+              )}
+            </div>
+            <h2 className="text-base font-semibold text-gray-900 leading-snug">{tab === 'edit' ? draft.title : story.title}</h2>
           </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 shrink-0">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        {expanded
-          ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
-          : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
-      </button>
 
-      {expanded && (
-        <div className="px-4 pb-5 border-t border-gray-100 animate-fade-in-up">
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 shrink-0">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                tab === t.id
+                  ? 'border-brand-500 text-brand-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <t.icon className="w-3.5 h-3.5" />
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {editing ? (
-            <div className="space-y-3 py-3">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {tab === 'view' && (
+            <div className="px-5">
+              <StoryContent story={story} />
+            </div>
+          )}
+
+          {tab === 'edit' && (
+            <div className="p-5 space-y-4">
               <div>
-                <label htmlFor={`${story.id}-title`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Title</label>
+                <label htmlFor={`modal-${story.id}-title`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Title</label>
                 <input
-                  id={`${story.id}-title`}
+                  id={`modal-${story.id}-title`}
                   className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
                   value={draft.title}
                   onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
@@ -568,9 +652,9 @@ function StoryAccordionItem({ story, defaultOpen, settings, validation, accepted
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label htmlFor={`${story.id}-priority`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</label>
+                  <label htmlFor={`modal-${story.id}-priority`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</label>
                   <select
-                    id={`${story.id}-priority`}
+                    id={`modal-${story.id}-priority`}
                     className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
                     value={draft.priority}
                     onChange={e => setDraft(d => ({ ...d, priority: e.target.value as Story['priority'] }))}
@@ -579,10 +663,10 @@ function StoryAccordionItem({ story, defaultOpen, settings, validation, accepted
                   </select>
                 </div>
                 <div className="w-28">
-                  <label htmlFor={`${story.id}-points`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Points</label>
+                  <label htmlFor={`modal-${story.id}-points`} className="text-xs font-medium text-gray-500 uppercase tracking-wide">Points</label>
                   <input
-                    id={`${story.id}-points`}
-                    type="number" min={1} max={21}
+                    id={`modal-${story.id}-points`}
+                    type="number" min={1} max={13}
                     className="mt-1 w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
                     value={draft.storyPoints ?? ''}
                     onChange={e => setDraft(d => ({ ...d, storyPoints: e.target.value ? Number(e.target.value) : undefined }))}
@@ -590,130 +674,99 @@ function StoryAccordionItem({ story, defaultOpen, settings, validation, accepted
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Story</p>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Story sentence</p>
                 <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden text-sm">
-                  <div className="flex items-start gap-2 px-3 py-2">
-                    <span className="text-gray-400 shrink-0 pt-0.5 w-16 text-right">As a</span>
-                    <textarea
-                      id={`${story.id}-asa`}
-                      aria-label="As a"
-                      rows={1}
-                      className="flex-1 resize-none focus:outline-none focus:ring-0 bg-transparent"
-                      value={draft.asA}
-                      onChange={e => setDraft(d => ({ ...d, asA: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex items-start gap-2 px-3 py-2">
-                    <span className="text-gray-400 shrink-0 pt-0.5 w-16 text-right">I want to</span>
-                    <textarea
-                      id={`${story.id}-iwantto`}
-                      aria-label="I want to"
-                      rows={2}
-                      className="flex-1 resize-none focus:outline-none focus:ring-0 bg-transparent"
-                      value={draft.iWantTo}
-                      onChange={e => setDraft(d => ({ ...d, iWantTo: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex items-start gap-2 px-3 py-2">
-                    <span className="text-gray-400 shrink-0 pt-0.5 w-16 text-right">so that</span>
-                    <textarea
-                      id={`${story.id}-sothat`}
-                      aria-label="So that"
-                      rows={2}
-                      className="flex-1 resize-none focus:outline-none focus:ring-0 bg-transparent"
-                      value={draft.soThat}
-                      onChange={e => setDraft(d => ({ ...d, soThat: e.target.value }))}
-                    />
-                  </div>
+                  {[
+                    { label: 'As a',     field: 'asA'     as const, rows: 1 },
+                    { label: 'I want to', field: 'iWantTo' as const, rows: 2 },
+                    { label: 'so that',  field: 'soThat'  as const, rows: 2 },
+                  ].map(({ label, field, rows }) => (
+                    <div key={field} className="flex items-start gap-2 px-3 py-2">
+                      <span className="text-gray-400 shrink-0 pt-0.5 w-16 text-right text-xs">{label}</span>
+                      <textarea
+                        aria-label={label}
+                        rows={rows}
+                        className="flex-1 resize-none focus:outline-none focus:ring-0 bg-transparent text-sm"
+                        value={draft[field]}
+                        onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
-              <EditableList label="Acceptance Criteria" field="acceptanceCriteria" draft={draft} setDraft={setDraft} storyId={story.id} />
-              <EditableList label="In Scope" field="inScope" draft={draft} setDraft={setDraft} storyId={story.id} />
-              <EditableList label="Out of Scope" field="outOfScope" draft={draft} setDraft={setDraft} storyId={story.id} />
-              <EditableList label="Assumptions" field="assumptions" draft={draft} setDraft={setDraft} storyId={story.id} />
-              <EditableList label="Cross-Functional Needs" field="crossFunctionalNeeds" draft={draft} setDraft={setDraft} storyId={story.id} />
+              <EditableList label="Acceptance Criteria"    field="acceptanceCriteria"    draft={draft} setDraft={setDraft} storyId={`modal-${story.id}`} />
+              <EditableList label="In Scope"               field="inScope"               draft={draft} setDraft={setDraft} storyId={`modal-${story.id}`} />
+              <EditableList label="Out of Scope"           field="outOfScope"            draft={draft} setDraft={setDraft} storyId={`modal-${story.id}`} />
+              <EditableList label="Assumptions"            field="assumptions"           draft={draft} setDraft={setDraft} storyId={`modal-${story.id}`} />
+              <EditableList label="Cross-Functional Needs" field="crossFunctionalNeeds"  draft={draft} setDraft={setDraft} storyId={`modal-${story.id}`} />
             </div>
-          ) : (
-            <StoryContent story={story} />
           )}
 
-          <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-gray-100">
-            {editing ? (
-              <>
-                <button onClick={handleSave}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-brand-600 text-white border-brand-600 hover:bg-brand-700 transition-colors">
-                  <Save className="w-3.5 h-3.5" /> Save
-                </button>
-                <button onClick={handleDiscard}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
-                  <X className="w-3.5 h-3.5" /> Discard
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => setEditing(true)}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
-                  <Edit3 className="w-3.5 h-3.5" /> Edit
-                </button>
-                <button
-                  onClick={() => setDiscussing(!discussing)}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                    discussing
-                      ? 'bg-gray-100 text-gray-700 border-gray-300'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  {discussing ? 'Hide chat' : 'Discuss'}
-                </button>
-                <button
-                  onClick={() => setShowValidation(!showValidation)}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                    showValidation
-                      ? 'bg-brand-100 text-brand-700 border-brand-300'
-                      : 'btn-primary py-1.5'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {showValidation ? 'Hide Validation' : validation ? 'View Validation' : 'Validate (INVEST)'}
-                </button>
-                <CopyMarkdownButton story={story} />
-                <button
-                  onClick={() => setShowJira(true)}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Push to Jira
-                </button>
-              </>
-            )}
-          </div>
-
-          {discussing && !editing && <StoryDiscussPanel story={story} />}
-
-          {!editing && showJira && (
-            <JiraPushModal
-              items={[{ id: story.id, title: story.title, type: 'Story' }]}
-              onClose={() => setShowJira(false)}
-            />
+          {tab === 'discuss' && (
+            <div className="p-5">
+              <StoryDiscussPanel story={story} />
+            </div>
           )}
 
-          {!editing && showValidation && (
-            <ValidationSection
-              key={`${story.id}-${settings.provider}`}
-              story={story}
-              settings={settings}
-              validation={validation}
-              acceptedKeys={acceptedKeys}
-              onValidated={onValidated}
-              onFixAccepted={onFixAccepted}
-              onStoryChange={onStoryChange}
-              onAddStory={onAddStory}
-            />
+          {tab === 'validate' && (
+            <div className="p-5">
+              <ValidationSection
+                key={`${story.id}-${settings.provider}`}
+                story={story}
+                settings={settings}
+                validation={validation}
+                acceptedKeys={acceptedKeys}
+                onValidated={onValidated}
+                onFixAccepted={onFixAccepted}
+                onStoryChange={onStoryChange}
+                onAddStory={onAddStory}
+              />
+            </div>
           )}
         </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl shrink-0">
+          <div className="flex items-center gap-2">
+            <CopyMarkdownButton story={tab === 'edit' ? draft : story} />
+            <button
+              onClick={() => setShowJira(true)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" /> Push to Jira
+            </button>
+          </div>
+          {tab === 'edit' ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setDraft(story); setTab('view') }}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" /> Discard
+              </button>
+              <button
+                onClick={() => { handleSave(); setTab('view') }}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+              >
+                <Save className="w-3.5 h-3.5" /> Save
+              </button>
+            </div>
+          ) : (
+            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5">
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showJira && (
+        <JiraPushModal
+          items={[{ id: story.id, title: story.title, type: 'Story' }]}
+          onClose={() => setShowJira(false)}
+        />
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -732,6 +785,24 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
   const [localStories, setLocalStories]   = useState<Story[]>(existingStories)
   const [error, setError]   = useState<string | null>(null)
   const [showJira, setShowJira] = useState(false)
+
+  const [visibleStoryIds, setVisibleStoryIds] = useState<Set<string>>(
+    new Set(existingStories.map(s => s.id)),
+  )
+  const revealedStoriesRef = useRef<Set<string>>(new Set(existingStories.map(s => s.id)))
+  const [generatingMore, setGeneratingMore] = useState(false)
+  const [selectedStory, setSelectedStory] = useState<{ story: Story; tab: StoryTab } | null>(null)
+  const [activePriority, setActivePriority] = useState<string | null>(null)
+
+  useEffect(() => {
+    const toReveal = localStories.filter(s => !revealedStoriesRef.current.has(s.id))
+    toReveal.forEach((s, i) => {
+      setTimeout(() => {
+        revealedStoriesRef.current.add(s.id)
+        setVisibleStoryIds(prev => new Set([...prev, s.id]))
+      }, i * 120)
+    })
+  }, [localStories])
 
   const getStory = (s: Story) => storyVersions[s.id] || s
 
@@ -763,8 +834,33 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
     }
   }
 
+  const generateMoreStories = async () => {
+    setGeneratingMore(true)
+    setError(null)
+    try {
+      const current = localStories.map(s => getStory(s))
+      const raw = await callLLM(
+        buildGenerateStoriesPrompt(epic, context, [], current),
+        settings,
+        [],
+        'generate-more-stories',
+      )
+      const additional = parseStories(raw, epic.id).map((s, i) => ({
+        ...s,
+        id: `story-${epic.id}-more-${Date.now()}-${i}`,
+      }))
+      setStories(prev => [...prev, ...additional])
+      setLocalStories(prev => [...prev, ...additional])
+      onStoriesGenerated(epic.id, [...localStories, ...additional])
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setGeneratingMore(false)
+    }
+  }
+
   return (
-    <div className="py-6 px-4 max-w-4xl mx-auto animate-fade-in-up">
+    <div className="py-6 px-6 animate-fade-in-up">
       {/* Page header */}
       <div className="flex items-center gap-3 mb-5">
         <div>
@@ -835,65 +931,133 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
         </div>
       )}
 
-      {/* Done: story accordion */}
-      {phase === 'done' && (
-        <div className="mt-6 animate-fade-in-up">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-brand-500" />
-              <span className="text-sm font-semibold text-gray-700">
-                {stories.length} {stories.length === 1 ? 'Story' : 'Stories'}
-              </span>
+      {/* Done: story card grid */}
+      {phase === 'done' && (() => {
+        const priorities = ['High', 'Medium', 'Low', 'Critical'].filter(p =>
+          localStories.some(s => getStory(s).priority === p),
+        )
+        const displayStories = localStories
+          .filter(s => visibleStoryIds.has(s.id))
+          .filter(s => activePriority === null || getStory(s).priority === activePriority)
+
+        return (
+          <div className="mt-6">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-brand-500" />
+                <span className="text-sm font-semibold text-gray-700">
+                  {stories.length} {stories.length === 1 ? 'Story' : 'Stories'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={generateMoreStories}
+                  disabled={generatingMore}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors disabled:opacity-50"
+                >
+                  {generatingMore ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {generatingMore ? 'Generating…' : 'Generate More'}
+                </button>
+                <button
+                  onClick={() => exportStoriesToExcel(localStories.map(s => getStory(s)), epic?.title)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Excel
+                </button>
+                <button
+                  onClick={() => setShowJira(true)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5" /> Push to Jira
+                </button>
+                <button
+                  onClick={() => { setStories([]); setPhase('input') }}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Regenerate
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => exportStoriesToExcel(localStories.map(s => getStory(s)), epic?.title)}
-                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Export Excel
-              </button>
-              <button
-                onClick={() => setShowJira(true)}
-                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Push to Jira
-              </button>
-              <button
-                onClick={() => { setStories([]); setPhase('input') }}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Regenerate
-              </button>
+
+            {/* Priority filter tabs */}
+            {priorities.length > 1 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setActivePriority(null)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    activePriority === null
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  All <span className="ml-1 opacity-70">{stories.length}</span>
+                </button>
+                {priorities.map(p => {
+                  const count = localStories.filter(s => getStory(s).priority === p).length
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setActivePriority(activePriority === p ? null : p)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        activePriority === p
+                          ? 'bg-brand-600 text-white border-brand-600'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {p} <span className="ml-1 opacity-70">{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Card grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {displayStories.map((s, i) => (
+                <StoryCard
+                  key={s.id}
+                  story={getStory(s)}
+                  index={i}
+                  validation={storyValidations[s.id] ?? null}
+                  acceptedKeys={new Set(storyAcceptedFixes[s.id] ?? [])}
+                  onView={() => setSelectedStory({ story: getStory(s), tab: 'view' })}
+                  onValidate={() => setSelectedStory({ story: getStory(s), tab: 'validate' })}
+                />
+              ))}
+              {generatingMore && (
+                <div className="card p-4 flex items-center gap-2 border-dashed text-brand-600 text-xs">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  Generating additional stories…
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="space-y-3">
-            {localStories.map((s, i) => (
-              <StoryAccordionItem
-                key={s.id}
-                story={getStory(s)}
-                defaultOpen={i === 0}
-                settings={settings}
-                validation={storyValidations[s.id] ?? null}
-                acceptedKeys={new Set(storyAcceptedFixes[s.id] ?? [])}
-                onValidated={v => onStoryValidated(s.id, v)}
-                onFixAccepted={key => onFixAccepted(s.id, key)}
-                onStoryChange={updated => setStoryVersions(prev => ({ ...prev, [s.id]: updated }))}
-                onAddStory={handleAddStory}
-              />
-            ))}
-          </div>
-
-        </div>
-      )}
+        )
+      })()}
 
       {showJira && (
         <JiraPushModal
           items={localStories.map(s => ({ id: s.id, title: getStory(s).title, type: 'Story' as const }))}
           onClose={() => setShowJira(false)}
+        />
+      )}
+
+      {selectedStory && (
+        <StoryDetailModal
+          story={selectedStory.story}
+          settings={settings}
+          initialTab={selectedStory.tab}
+          validation={storyValidations[selectedStory.story.id] ?? null}
+          acceptedKeys={new Set(storyAcceptedFixes[selectedStory.story.id] ?? [])}
+          onValidated={v => onStoryValidated(selectedStory.story.id, v)}
+          onFixAccepted={key => onFixAccepted(selectedStory.story.id, key)}
+          onStoryChange={updated => {
+            setStoryVersions(prev => ({ ...prev, [selectedStory.story.id]: updated }))
+            setSelectedStory({ story: updated, tab: selectedStory.tab })
+          }}
+          onAddStory={handleAddStory}
+          onClose={() => setSelectedStory(null)}
         />
       )}
     </div>

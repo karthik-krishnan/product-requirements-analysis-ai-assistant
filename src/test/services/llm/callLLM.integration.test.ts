@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { callLLM } from '../../../services/llm/client'
-import type { APISettings } from '../../types'
+import type { APISettings } from '../../../types'
 import type { LLMMessage } from '../../../services/llm/shared'
 
 // ─── Mock each provider module ─────────────────────────────────────────────────

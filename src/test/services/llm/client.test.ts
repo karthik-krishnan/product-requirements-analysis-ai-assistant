@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { isDemo, hasValidKey, isLiveMode } from '../../../services/llm/client'
-import type { APISettings } from '../../types'
+import type { APISettings } from '../../../types'
 
 const base: APISettings = {
   provider: 'demo',

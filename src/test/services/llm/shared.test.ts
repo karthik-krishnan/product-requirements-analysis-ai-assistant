@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseJSON, LLMError, injectFilesIntoMessages } from '../../../services/llm/shared'
 import type { LLMMessage } from '../../../services/llm/shared'
-import type { UploadedFile } from '../../types'
+import type { UploadedFile } from '../../../types'
 
 // ─── parseJSON ────────────────────────────────────────────────────────────────
 

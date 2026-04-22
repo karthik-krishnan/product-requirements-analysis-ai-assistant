@@ -1,9 +1,10 @@
 /**
- * Tests for the inline story editing feature in StoryBreakdown.
+ * Tests for the story card grid + detail modal in StoryBreakdown.
  *
  * Strategy: pass an epic with pre-existing stories so the component
- * starts in 'done' phase (no LLM call needed). The first story is
- * defaultOpen so the accordion and Edit button are immediately visible.
+ * starts in 'done' phase (no LLM call needed). Stories are shown as
+ * cards; clicking "View / Edit" opens a modal with View / Edit / Discuss
+ * / Validate tabs.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -48,7 +49,6 @@ const makeStory = (overrides: Partial<Story> = {}): Story => ({
   outOfScope: ['Specialist referral booking'],
   assumptions: ['Patient already has an active account'],
   crossFunctionalNeeds: ['FHIR Adapter must support Appointment resource'],
-  tags: [],
   ...overrides,
 })
 
@@ -93,53 +93,112 @@ function renderBreakdown(story: Story = makeStory()) {
   )
 }
 
-// ─── Visibility: read mode ────────────────────────────────────────────────────
+/** Opens the detail modal for the first story card */
+async function openModal() {
+  await userEvent.click(screen.getByRole('button', { name: /view \/ edit/i }))
+}
 
-describe('Edit button — read mode', () => {
-  it('shows Edit button when story accordion is expanded', () => {
+/** Opens modal then switches to the Edit tab */
+async function openEditTab() {
+  await openModal()
+  await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+}
+
+// ─── Card grid — default state ────────────────────────────────────────────────
+
+describe('Card grid — default state', () => {
+  it('renders the story title as a card heading', () => {
     renderBreakdown()
-    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+    expect(screen.getByText('Book a GP appointment')).toBeInTheDocument()
   })
 
-  it('shows story content in read mode by default', () => {
+  it('shows the priority badge on the card', () => {
+    renderBreakdown()
+    expect(screen.getByText('High')).toBeInTheDocument()
+  })
+
+  it('shows story points on the card', () => {
+    renderBreakdown()
+    expect(screen.getByText('5pts')).toBeInTheDocument()
+  })
+
+  it('shows "As a..." snippet on the card', () => {
     renderBreakdown()
     expect(screen.getByText(/registered patient/i)).toBeInTheDocument()
   })
 
-  it('does not show Save or Discard buttons in read mode', () => {
+  it('shows View / Edit button on each card', () => {
+    renderBreakdown()
+    expect(screen.getByRole('button', { name: /view \/ edit/i })).toBeInTheDocument()
+  })
+
+  it('does not show Save or Discard before modal is opened', () => {
     renderBreakdown()
     expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument()
   })
+})
 
-  it('shows Discuss, Validate, Copy MD, Push to Jira in read mode', () => {
+// ─── Modal — View tab ─────────────────────────────────────────────────────────
+
+describe('Modal — View tab', () => {
+  it('opens the modal when "View / Edit" is clicked', async () => {
     renderBreakdown()
+    await openModal()
+    // soThat text is only in the modal view, not on the card
+    expect(screen.getByText(/I can avoid calling the surgery/i)).toBeInTheDocument()
+  })
+
+  it('shows story content in the View tab', async () => {
+    renderBreakdown()
+    await openModal()
+    expect(screen.getByText(/I can avoid calling the surgery/i)).toBeInTheDocument()
+    expect(screen.getByText(/Available slots fetched from Epic/i)).toBeInTheDocument()
+  })
+
+  it('shows Edit, Discuss, Validate tabs in the modal', async () => {
+    renderBreakdown()
+    await openModal()
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /discuss/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /validate \(invest\)/i })).toBeInTheDocument()
+    // Both the modal tab and the card button say "Validate" — at least 2 present
+    expect(screen.getAllByRole('button', { name: /validate/i }).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows Copy MD and Push to Jira in the modal footer', async () => {
+    renderBreakdown()
+    await openModal()
     expect(screen.getByRole('button', { name: /copy md/i })).toBeInTheDocument()
-    // Multiple "Push to Jira" buttons can exist (story + page level)
     expect(screen.getAllByRole('button', { name: /push to jira/i }).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('closes the modal when Close is clicked', async () => {
+    renderBreakdown()
+    await openModal()
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }))
+    // soThat text is only in the modal; after close it should be gone
+    expect(screen.queryByText(/I can avoid calling the surgery/i)).not.toBeInTheDocument()
   })
 })
 
-// ─── Entering edit mode ───────────────────────────────────────────────────────
+// ─── Modal — Edit tab ─────────────────────────────────────────────────────────
 
-describe('Entering edit mode', () => {
-  it('shows title input after clicking Edit', async () => {
+describe('Modal — Edit tab', () => {
+  it('shows title input after switching to Edit tab', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByLabelText(/title/i)).toBeInTheDocument()
   })
 
   it('pre-populates title with current value', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByLabelText(/title/i)).toHaveValue('Book a GP appointment')
   })
 
   it('pre-populates story sentence fields', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByLabelText(/as a/i)).toHaveValue('registered patient')
     expect(screen.getByLabelText(/i want to/i)).toHaveValue('book a GP appointment online')
     expect(screen.getByLabelText(/so that/i)).toHaveValue('I can avoid calling the surgery')
@@ -147,39 +206,27 @@ describe('Entering edit mode', () => {
 
   it('pre-populates story points', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByLabelText(/points/i)).toHaveValue(5)
   })
 
-  it('swaps Edit button for Save and Discard', async () => {
+  it('shows Save and Discard buttons while in Edit tab', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
-    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+    await openEditTab()
     expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /discard/i })).toBeInTheDocument()
   })
 
-  it('hides Discuss, Validate, Copy MD, Push to Jira while editing', async () => {
-    renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
-    expect(screen.queryByRole('button', { name: /discuss/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /validate \(invest\)/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /copy md/i })).not.toBeInTheDocument()
-    // The per-story Push to Jira button inside the action bar should be gone while editing
-    // (page-level Push to Jira at the top of the list may still be present)
-    expect(screen.queryByRole('button', { name: /copy md/i })).not.toBeInTheDocument()
-  })
-
   it('shows existing acceptance criteria as textareas', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByDisplayValue(/Available slots fetched/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue(/Patient cannot hold/i)).toBeInTheDocument()
   })
 
   it('shows in scope, out of scope, assumptions, cross-functional needs as textareas', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByDisplayValue(/GP appointment booking only/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue(/Specialist referral booking/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue(/Patient already has an active account/i)).toBeInTheDocument()
@@ -190,48 +237,43 @@ describe('Entering edit mode', () => {
 // ─── Saving edits ─────────────────────────────────────────────────────────────
 
 describe('Saving edits', () => {
-  it('updates the accordion header title after save', async () => {
+  it('updates the modal header title after save', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const titleInput = screen.getByLabelText(/title/i)
     await userEvent.clear(titleInput)
     await userEvent.type(titleInput, 'Reschedule a GP appointment')
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByText('Reschedule a GP appointment')).toBeInTheDocument()
+    // Title appears in both modal header and card — at least one instance is enough
+    expect(screen.getAllByText('Reschedule a GP appointment').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('returns to read mode after save', async () => {
+  it('returns to View tab after save', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument()
   })
 
-  it('persists edited "As a" value in read mode after save', async () => {
+  it('persists edited "As a" value after save', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const asAInput = screen.getByLabelText(/as a/i)
     await userEvent.clear(asAInput)
     await userEvent.type(asAInput, 'carer or guardian')
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByText(/carer or guardian/i)).toBeInTheDocument()
+    // Appears in modal view + card snippet — at least one is enough
+    expect(screen.getAllByText(/carer or guardian/i).length).toBeGreaterThanOrEqual(1)
   })
 
   it('updates the priority badge after changing priority and saving', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.selectOptions(screen.getByLabelText(/priority/i), 'Critical')
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByText('Critical')).toBeInTheDocument()
-  })
-
-  it('restores all action buttons after save', async () => {
-    renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    expect(screen.getByRole('button', { name: /discuss/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /validate \(invest\)/i })).toBeInTheDocument()
+    // Appears in modal header badge + card badge
+    expect(screen.getAllByText('Critical').length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -240,28 +282,29 @@ describe('Saving edits', () => {
 describe('Discarding edits', () => {
   it('restores original title after discard', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const titleInput = screen.getByLabelText(/title/i)
     await userEvent.clear(titleInput)
     await userEvent.type(titleInput, 'Something completely different')
     await userEvent.click(screen.getByRole('button', { name: /discard/i }))
-    expect(screen.getByText('Book a GP appointment')).toBeInTheDocument()
+    // Original title appears on both modal header and card — at least one is enough
+    expect(screen.getAllByText('Book a GP appointment').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('Something completely different')).not.toBeInTheDocument()
   })
 
-  it('returns to read mode after discard', async () => {
+  it('returns to View tab after discard', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /discard/i }))
-    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
   })
 
-  it('restores all action buttons after discard', async () => {
+  it('can re-enter edit mode after discarding', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /discard/i }))
-    expect(screen.getByRole('button', { name: /discuss/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /validate \(invest\)/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument()
   })
 })
 
@@ -270,7 +313,7 @@ describe('Discarding edits', () => {
 describe('Acceptance criteria editing', () => {
   it('adds a new empty criterion row', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const before = screen.getAllByRole('textbox').length
     await userEvent.click(screen.getByRole('button', { name: /add acceptance criteria item/i }))
     expect(screen.getAllByRole('textbox').length).toBe(before + 1)
@@ -278,7 +321,7 @@ describe('Acceptance criteria editing', () => {
 
   it('saves a newly typed criterion', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /add acceptance criteria item/i }))
     const allTextareas = screen.getAllByRole('textbox')
     await userEvent.type(allTextareas[allTextareas.length - 1], 'Confirmation email sent via SendGrid')
@@ -288,7 +331,7 @@ describe('Acceptance criteria editing', () => {
 
   it('removes a criterion when clicking its remove button', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const removeBtn = screen.getByRole('button', { name: /remove acceptance criteria item 1/i })
     await userEvent.click(removeBtn)
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -302,15 +345,14 @@ describe('Acceptance criteria editing', () => {
 describe('In Scope / Out of Scope / Assumptions / Cross-Functional editing', () => {
   it('shows add buttons for all five list sections', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
-    // aria-label pattern: "Add <Label> item" for all 5 sections
+    await openEditTab()
     const addButtons = screen.getAllByRole('button', { name: /^add .+ item$/i })
     expect(addButtons.length).toBe(5)
   })
 
   it('adds and saves a new in-scope item', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /add in scope item/i }))
     const emptyInputs = screen.getAllByRole('textbox').filter(el => (el as HTMLTextAreaElement).value === '')
     await userEvent.type(emptyInputs[0], 'Telehealth appointments')
@@ -320,7 +362,7 @@ describe('In Scope / Out of Scope / Assumptions / Cross-Functional editing', () 
 
   it('removes an out-of-scope item', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const removeBtn = screen.getByRole('button', { name: /remove out of scope item 1/i })
     await userEvent.click(removeBtn)
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -329,7 +371,7 @@ describe('In Scope / Out of Scope / Assumptions / Cross-Functional editing', () 
 
   it('edits an existing assumption', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     const assumptionInput = screen.getByDisplayValue(/Patient already has an active account/i)
     await userEvent.clear(assumptionInput)
     await userEvent.type(assumptionInput, 'Patient is registered with an MRN')
@@ -345,22 +387,31 @@ describe('Edge cases', () => {
   it('handles a story with empty lists without crashing', async () => {
     const story = makeStory({ acceptanceCriteria: [], inScope: [], outOfScope: [], assumptions: [], crossFunctionalNeeds: [] })
     renderBreakdown(story)
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByRole('button', { name: /add acceptance criteria item/i })).toBeInTheDocument()
   })
 
   it('handles a story with no story points without crashing', async () => {
     renderBreakdown(makeStory({ storyPoints: undefined }))
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openEditTab()
     expect(screen.getByLabelText(/points/i)).toHaveValue(null)
   })
 
-  it('can enter and exit edit mode multiple times', async () => {
+  it('can open and close the modal multiple times', async () => {
     renderBreakdown()
-    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    await openModal()
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }))
+    await openModal()
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }))
+    expect(screen.getByText('Book a GP appointment')).toBeInTheDocument()
+  })
+
+  it('can enter and exit edit mode multiple times within the modal', async () => {
+    renderBreakdown()
+    await openEditTab()
     await userEvent.click(screen.getByRole('button', { name: /discard/i }))
     await userEvent.click(screen.getByRole('button', { name: /^edit$/i }))
     await userEvent.click(screen.getByRole('button', { name: /discard/i }))
-    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
   })
 })
