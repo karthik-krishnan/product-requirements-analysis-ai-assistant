@@ -9,6 +9,7 @@ import ContextCaptureComponent from './components/ContextCapture'
 import RequirementsInput from './components/RequirementsInput'
 import EpicsView from './components/EpicsView'
 import StoryBreakdown from './components/StoryBreakdown'
+import AllStoriesView from './components/AllStoriesView'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
   { id: 'context',      label: 'Context',         icon: BookOpen,   description: 'Domain & tech context' },
@@ -75,14 +76,15 @@ export default function App() {
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [epicView, setEpicView] = useState<'grid' | 'all-stories'>('grid')
 
   const goTo = (step: AppStep) => {
     setState(p => ({
       ...p,
       currentStep: step,
-      // Clicking Epics & Stories tab always returns to the epic grid
       ...(step === 'epics' ? { selectedEpicId: null } : {}),
     }))
+    if (step === 'epics') setEpicView('grid')
     setSidebarOpen(false)
   }
 
@@ -261,12 +263,38 @@ export default function App() {
             />
           )}
           {state.currentStep === 'epics' && !state.selectedEpicId && (
-            <EpicsView
-              epics={state.epics}
-              settings={state.settings}
-              onEpicsChange={handleEpicsChange}
-              onBreakIntoStories={handleBreakIntoStories}
-            />
+            <>
+              {/* View toggle */}
+              <div className="flex items-center gap-1 px-6 pt-6 pb-0">
+                <div className="flex rounded-lg border border-gray-200 bg-gray-100 p-0.5 text-xs font-medium">
+                  {(['grid', 'all-stories'] as const).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setEpicView(v)}
+                      className={`px-3 py-1.5 rounded-md transition-colors ${
+                        epicView === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {v === 'grid' ? 'Epics' : 'All Stories'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {epicView === 'grid'
+                ? <EpicsView
+                    epics={state.epics}
+                    settings={state.settings}
+                    onEpicsChange={handleEpicsChange}
+                    onBreakIntoStories={handleBreakIntoStories}
+                  />
+                : <AllStoriesView
+                    epics={state.epics}
+                    storyValidations={state.storyValidations}
+                    storyAcceptedFixes={state.storyAcceptedFixes}
+                    onSelectEpic={handleBreakIntoStories}
+                  />
+              }
+            </>
           )}
           {state.currentStep === 'epics' && state.selectedEpicId && (
             <StoryBreakdown
