@@ -438,7 +438,7 @@ export function ValidationSection({
         {validating ? (
           <>
             <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
-            <p className="text-xs text-brand-600 flex-1">Validating against INVEST principles with AI…</p>
+            <p className="text-xs text-brand-600 flex-1">Analysing story quality with AI…</p>
           </>
         ) : validation !== null ? (
           <>
@@ -472,7 +472,7 @@ export function ValidationSection({
           <div className="flex gap-3 items-stretch">
             <div className="card p-3 text-center flex-1">
               <p className="text-2xl font-bold text-brand-600 transition-all duration-700">{overallScore}%</p>
-              <p className="text-xs text-gray-400 mt-0.5">INVEST Score</p>
+              <p className="text-xs text-gray-400 mt-0.5">Quality Score</p>
             </div>
             <div className="card p-3 text-center flex-1">
               <div className="flex items-center justify-center gap-1">
@@ -500,7 +500,7 @@ export function ValidationSection({
             )}
           </div>
 
-          {/* INVEST table */}
+          {/* Quality breakdown table */}
           <div className="card overflow-hidden">
             <div className="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">INVEST Breakdown</p>

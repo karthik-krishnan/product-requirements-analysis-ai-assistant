@@ -483,30 +483,28 @@ function StoryCard({ story, index, validation, acceptedKeys, onView, onValidate 
   const score = validation ? investScore(validation, acceptedKeys) : null
   const issues = validation ? INVEST_KEYS.filter(k => !validation[k].adheres && !acceptedKeys.has(k)).length : 0
 
+  const dotColor = score === null ? 'bg-gray-200'
+    : score >= 80 ? 'bg-emerald-400'
+    : score >= 60 ? 'bg-amber-400'
+    : 'bg-red-400'
+  const dotTitle = score === null ? 'Not yet validated'
+    : `Quality Score: ${score}% · ${issues === 0 ? 'All clear' : `${issues} issue${issues > 1 ? 's' : ''}`}`
+
   return (
     <div
-      className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer animate-fade-in-up"
+      className="relative card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer animate-fade-in-up"
       style={{ animationDelay: `${index * 60}ms` }}
       onClick={onView}
     >
-      <div className="flex items-start justify-between gap-2">
+      <span
+        className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${dotColor} ring-2 ring-white`}
+        title={dotTitle}
+      />
+      <div className="flex items-start gap-2">
         <span className={`badge ${PRIORITY_COLORS[story.priority]}`}>{story.priority}</span>
-        <div className="flex items-center gap-1.5">
-          {story.storyPoints != null && (
-            <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
-          )}
-          {score !== null && (
-            <span className={`text-xs font-bold ${score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
-              {score}%
-            </span>
-          )}
-          {score !== null && issues === 0 && (
-            <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-1.5 py-0.5">✓</span>
-          )}
-          {score !== null && issues > 0 && (
-            <span className="text-xs text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5">{issues}</span>
-          )}
-        </div>
+        {story.storyPoints != null && (
+          <span className="badge bg-gray-100 text-gray-600">{story.storyPoints}pts</span>
+        )}
       </div>
 
       <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{story.title}</h3>
@@ -603,7 +601,7 @@ function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidat
               )}
               {validation && (
                 <span className={`text-xs font-bold ${investScore(validation, acceptedKeys) >= 80 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  INVEST {investScore(validation, acceptedKeys)}%
+                  Quality Score {investScore(validation, acceptedKeys)}%
                 </span>
               )}
             </div>

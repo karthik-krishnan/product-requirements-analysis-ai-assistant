@@ -14,7 +14,7 @@ import AllStoriesView from './components/AllStoriesView'
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
   { id: 'context',      label: 'Context',         icon: BookOpen,   description: 'Domain & tech context' },
   { id: 'requirements', label: 'Requirements',    icon: FileText,   description: 'Intake & AI exploration' },
-  { id: 'epics',        label: 'Epics & Stories', icon: Layers,     description: 'Epics, breakdown & validation' },
+  { id: 'epics',        label: 'Epics & Stories', icon: Layers,     description: 'Breakdown & validation' },
 ]
 
 const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics']
