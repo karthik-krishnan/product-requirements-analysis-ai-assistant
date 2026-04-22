@@ -571,6 +571,12 @@ function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidat
 
   useEffect(() => { setDraft(story) }, [story])
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const handleSave = () => { onStoryChange(draft) }
 
   const TABS: { id: StoryTab; label: string; icon: React.ElementType }[] = [

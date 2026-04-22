@@ -51,6 +51,12 @@ function EpicDialog({ epic, onClose, onSave, onBreakIntoStories }: EpicDialogPro
   ])
   const [isTyping, setIsTyping] = useState(false)
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const sendChat = () => {
     if (!chatInput.trim()) return
     const userMsg = { id: Date.now().toString(), role: 'user' as const, content: chatInput.trim() }
