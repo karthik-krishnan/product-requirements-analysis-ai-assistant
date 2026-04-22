@@ -649,7 +649,7 @@ export default function StoryValidation({
   onStoryValidated, onFixAccepted,
   onViewStory, onAddStory,
 }: Props) {
-  const allStories = stories.length > 0 ? stories : MOCK_STORY_LIST
+  const allStories = stories.length > 0 ? stories : (isDemo(settings) ? MOCK_STORY_LIST : [])
   const [storyVersions, setStoryVersions] = useState<Record<string, Story>>({})
   const [localStories, setLocalStories]   = useState<Story[]>(allStories)
 

@@ -20,8 +20,13 @@ export async function callDemo(promptType: string | undefined): Promise<string> 
     return JSON.stringify({ epics: MOCK_EPICS })
   }
   if (promptType === 'generate-stories') {
-    // Strip id/epicId so parseStories can inject the real epicId
-    const stories = MOCK_STORY_LIST.map(({ id: _id, epicId: _epicId, ...rest }) => rest)
+    // Return first 4 stories so demo shows a realistic initial set
+    const stories = MOCK_STORY_LIST.slice(0, 4).map(({ id: _id, epicId: _epicId, ...rest }) => rest)
+    return JSON.stringify({ stories })
+  }
+  if (promptType === 'generate-more-stories') {
+    // Return remaining stories to simulate "generate more"
+    const stories = MOCK_STORY_LIST.slice(4).map(({ id: _id, epicId: _epicId, ...rest }) => rest)
     return JSON.stringify({ stories })
   }
   if (promptType === 'validate-invest') {

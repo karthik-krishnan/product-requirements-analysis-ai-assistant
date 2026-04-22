@@ -190,7 +190,12 @@ export default function RequirementsInput({
             onChange={e => setLocalReqs(e.target.value)}
           />
           <div className="flex items-center justify-between">
-            <button onClick={handleSkip} className="btn-secondary flex items-center gap-2">
+            <button
+              onClick={handleSkip}
+              disabled={isLiveMode(settings) && !localReqs.trim()}
+              className="btn-secondary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={isLiveMode(settings) && !localReqs.trim() ? 'Enter requirements first in live AI mode' : undefined}
+            >
               <SkipForward className="w-4 h-4" />
               Generate Epics Directly
             </button>

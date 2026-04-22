@@ -45,11 +45,12 @@ Return this exact JSON schema:
 }
 
 Rules:
-- Cover all major functional areas implied by requirements and Q&A answers.
-- Each epic must be a business capability — not a technical task or sprint.
-- Priorities should reflect business value and dependencies (what must come first).
+- Generate one epic per distinct business capability. Do not merge unrelated capabilities; do not create sub-features as separate epics.
+- Each epic must be a business capability — not a technical task, sprint, or team deliverable.
+- Priorities should reflect business value and delivery dependencies (what must come first).
 - Include 2–5 short, lowercase tags per epic.
-- Aim for 4–8 epics; adjust based on scope of requirements.
+- Use consistent, descriptive category names — they will be used to group epics visually. Related epics should share the same category string exactly.
+- There is no upper limit on epic count — generate as many as the requirements genuinely warrant. A focused product may need 4; a broad platform may need 15 or more.
 - Use sequential IDs: epic-1, epic-2, etc.`,
     },
   ]

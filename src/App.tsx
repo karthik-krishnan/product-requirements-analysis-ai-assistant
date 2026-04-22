@@ -246,6 +246,7 @@ export default function App() {
           {state.currentStep === 'epics' && (
             <EpicsView
               epics={state.epics}
+              settings={state.settings}
               onEpicsChange={handleEpicsChange}
               onBreakIntoStories={handleBreakIntoStories}
             />

@@ -7,16 +7,21 @@ export function buildGenerateStoriesPrompt(
   epic: Epic,
   context: ContextCapture,
   questions: ClarifyingQuestion[],
+  existingStories: Story[] = [],
 ): LLMMessage[] {
   const qaBlock = questions.length > 0
     ? questions.map(q => `Q: ${q.question}\nA: ${q.answer || '(no answer provided)'}`).join('\n\n')
     : '(no discovery questions — generate based on epic details and context)'
 
+  const existingBlock = existingStories.length > 0
+    ? `\nALREADY GENERATED STORIES (do not duplicate these):\n${existingStories.map(s => `- ${s.title}`).join('\n')}\n`
+    : ''
+
   return [
     { role: 'system', content: SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `Break down the following epic into detailed, INVEST-compliant user stories.
+      content: `Break down the following epic into detailed, INVEST-compliant user stories.${existingBlock ? '\n' + existingBlock : ''}
 
 DOMAIN CONTEXT:
 ${context.domainText || '(none provided)'}
@@ -59,8 +64,8 @@ Rules:
 - Acceptance criteria must be specific and verifiable — avoid vague terms like "should work" or "must be fast".
 - outOfScope must explicitly name things a user might reasonably expect but that aren't included.
 - crossFunctionalNeeds should reference specific teams or systems (Analytics, Infrastructure, UX, Platform, Security).
-- Prefer stories of ≤ 8 story points. Split larger work into multiple stories.
-- Generate 2–6 stories per epic, calibrated to the epic's complexity.`,
+- Every story must be ≤ 8 story points. If a capability cannot fit in 8 points, split it into two or more stories — this is the only size constraint.
+- Generate as many stories as the epic genuinely requires. Do not pad with trivial stories; do not omit real capabilities to hit a target count.${existingStories.length > 0 ? '\n- Only generate NEW stories not already listed above.' : ''}`,
     },
   ]
 }

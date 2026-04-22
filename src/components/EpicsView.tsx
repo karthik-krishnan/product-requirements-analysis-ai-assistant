@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Layers, ChevronRight, Edit3, MessageSquare, X, Tag, ArrowRight, Sparkles, Check, Download } from 'lucide-react'
-import type { Epic } from '../types'
+import type { Epic, APISettings } from '../types'
 import { MOCK_EPICS } from '../data/mockData'
 import { exportAllToExcel } from '../utils/export'
 import JiraPushModal from './JiraPushModal'
+import { isDemo } from '../services/llm/client'
 
 const PRIORITY_COLORS: Record<string, string> = {
   High: 'bg-red-100 text-red-700',
@@ -68,7 +70,7 @@ function EpicDialog({ epic, onClose, onSave, onBreakIntoStories }: EpicDialogPro
     }, 1200)
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] animate-fade-in-up">
         {/* Header */}
@@ -219,7 +221,8 @@ function EpicDialog({ epic, onClose, onSave, onBreakIntoStories }: EpicDialogPro
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -277,31 +280,59 @@ function EpicCard({ epic, index, onOpen, onBreakIntoStories }: EpicCardProps) {
   )
 }
 
+
+// ─── Main EpicsView ───────────────────────────────────────────────────────────
+
 interface Props {
   epics: Epic[]
+  settings: APISettings
   onEpicsChange: (epics: Epic[]) => void
   onBreakIntoStories: (epicId: string) => void
 }
 
-export default function EpicsView({ epics: propEpics, onEpicsChange, onBreakIntoStories }: Props) {
-  const epics = propEpics.length > 0 ? propEpics : MOCK_EPICS
+export default function EpicsView({ epics: propEpics, settings, onEpicsChange, onBreakIntoStories }: Props) {
+  const epics = propEpics.length > 0 ? propEpics : (isDemo(settings) ? MOCK_EPICS : [])
   const [selectedEpic, setSelectedEpic] = useState<Epic | null>(null)
   const [showJira, setShowJira] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  // Progressive reveal — epics appear one by one, 120ms apart
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set())
+  const revealedRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    const toReveal = epics.filter(e => !revealedRef.current.has(e.id))
+    toReveal.forEach((epic, i) => {
+      setTimeout(() => {
+        revealedRef.current.add(epic.id)
+        setVisibleIds(prev => new Set([...prev, epic.id]))
+      }, i * 120)
+    })
+  }, [epics])
+
+  const categories = epics.reduce<string[]>((acc, e) => {
+    if (!acc.includes(e.category)) acc.push(e.category)
+    return acc
+  }, [])
 
   const handleSave = (updated: Epic) => {
     onEpicsChange(epics.map(e => e.id === updated.id ? updated : e))
   }
 
+  const visibleEpics = epics
+    .filter(e => visibleIds.has(e.id))
+    .filter(e => activeCategory === null || e.category === activeCategory)
+
   return (
-    <div className="py-10 px-4 animate-fade-in-up">
-      <div className="flex items-center justify-between mb-8">
+    <div className="py-10 px-6 animate-fade-in-up">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Layers className="w-5 h-5 text-brand-600" />
             <h1 className="text-xl font-semibold text-gray-900">Generated Epics</h1>
           </div>
           <p className="text-sm text-gray-500">
-            {epics.length} epics identified · Review, refine via chat, then break into stories
+            {epics.length} epics · {categories.length} categories · Review, refine, then break into stories
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -325,20 +356,62 @@ export default function EpicsView({ epics: propEpics, onEpicsChange, onBreakInto
         </div>
       </div>
 
-      {/* Columnar grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4 mb-8">
-        {epics.map((epic, i) => (
-          <EpicCard
-            key={epic.id}
-            epic={epic}
-            index={i}
-            onOpen={() => setSelectedEpic(epic)}
-            onBreakIntoStories={() => onBreakIntoStories(epic.id)}
-          />
-        ))}
+      {/* Category filter tabs */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        <button
+          onClick={() => setActiveCategory(null)}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            activeCategory === null
+              ? 'bg-brand-600 text-white border-brand-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          All <span className="ml-1 opacity-70">{epics.length}</span>
+        </button>
+        {categories.map(cat => {
+          const count = epics.filter(e => e.category === cat).length
+          const active = activeCategory === cat
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(active ? null : cat)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                active
+                  ? 'bg-brand-600 text-white border-brand-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {cat} <span className="ml-1 opacity-70">{count}</span>
+            </button>
+          )
+        })}
       </div>
 
-      <div className="card p-4 flex items-center gap-3 bg-brand-50 border-brand-200">
+      {/* Empty state for live mode with no epics */}
+      {epics.length === 0 && (
+        <div className="card p-12 flex flex-col items-center gap-3 text-center mt-4">
+          <Layers className="w-10 h-10 text-gray-200" />
+          <p className="text-sm font-medium text-gray-500">No epics generated yet</p>
+          <p className="text-xs text-gray-400">Go back to Requirements and generate epics from your requirements.</p>
+        </div>
+      )}
+
+      {/* Flat grid — all visible cards flow together */}
+      {epics.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {visibleEpics.map((epic, i) => (
+            <EpicCard
+              key={epic.id}
+              epic={epic}
+              index={i}
+              onOpen={() => setSelectedEpic(epic)}
+              onBreakIntoStories={() => onBreakIntoStories(epic.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="card p-4 flex items-center gap-3 bg-brand-50 border-brand-200 mt-2">
         <ChevronRight className="w-4 h-4 text-brand-500 shrink-0" />
         <p className="text-sm text-brand-700">
           <strong>Next:</strong> Click <em>Stories</em> on any epic to break it down into user stories, or <em>Edit / Chat</em> to refine an epic with AI assistance.

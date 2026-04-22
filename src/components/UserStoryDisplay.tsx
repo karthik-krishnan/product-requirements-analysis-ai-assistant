@@ -101,7 +101,7 @@ interface Props {
 }
 
 export default function UserStoryDisplay({ storyId, stories, onBack }: Props) {
-  const allStories = stories.length > 0 ? stories : MOCK_STORY_LIST
+  const allStories = stories
   const story = allStories.find(s => s.id === storyId) || allStories[0]
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
