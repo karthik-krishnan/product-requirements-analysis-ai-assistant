@@ -239,6 +239,7 @@ function EpicCard({ epic, index, onOpen, onBreakIntoStories }: EpicCardProps) {
     <div
       className={`epic-card border ${bgClass} animate-fade-in-up`}
       style={{ animationDelay: `${index * 80}ms` }}
+      onClick={onOpen}
     >
       <div className="flex items-start justify-between gap-2">
         <span className={`badge ${PRIORITY_COLORS[epic.priority]}`}>{epic.priority}</span>
@@ -262,14 +263,14 @@ function EpicCard({ epic, index, onOpen, onBreakIntoStories }: EpicCardProps) {
 
       <div className="flex gap-2 pt-1">
         <button
-          onClick={onOpen}
+          onClick={e => { e.stopPropagation(); onOpen() }}
           className="flex-1 flex items-center justify-center gap-1.5 text-xs text-gray-600 border border-gray-200 bg-white rounded-lg py-1.5 hover:bg-gray-50 transition-colors"
         >
           <Edit3 className="w-3.5 h-3.5" />
           Edit / Chat
         </button>
         <button
-          onClick={onBreakIntoStories}
+          onClick={e => { e.stopPropagation(); onBreakIntoStories() }}
           className="flex-1 flex items-center justify-center gap-1.5 text-xs text-brand-600 border border-brand-200 bg-brand-50 rounded-lg py-1.5 hover:bg-brand-100 transition-colors font-medium"
         >
           <Sparkles className="w-3.5 h-3.5" />
