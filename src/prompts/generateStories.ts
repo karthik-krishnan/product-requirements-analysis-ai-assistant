@@ -47,7 +47,8 @@ Return this exact JSON schema:
       "iWantTo": "<concrete action the user wants to perform>",
       "soThat": "<business value or user outcome>",
       "acceptanceCriteria": [
-        "<specific, testable criterion — include measurable thresholds where relevant>"
+        "<specific, testable criterion — include measurable thresholds where relevant>",
+        "<add as many criteria as the story genuinely requires: simpler stories 2–3, complex stories 5–7>"
       ],
       "inScope": ["<what is explicitly included in this story>"],
       "outOfScope": ["<what is explicitly excluded — things users might assume are included>"],
@@ -61,7 +62,7 @@ Return this exact JSON schema:
 
 Rules:
 - Every story must satisfy all INVEST principles: Independent, Negotiable, Valuable, Estimable, Small, Testable.
-- Acceptance criteria must be specific and verifiable — avoid vague terms like "should work" or "must be fast".
+- Acceptance criteria count must reflect story complexity: 2–3 for small/simple stories (1–3 pts), 4–5 for medium (5 pts), 5–7 for complex stories (8 pts). Do not give every story the same number.
 - outOfScope must explicitly name things a user might reasonably expect but that aren't included.
 - crossFunctionalNeeds should reference specific teams or systems (Analytics, Infrastructure, UX, Platform, Security).
 - Every story must be ≤ 8 story points. If a capability cannot fit in 8 points, split it into two or more stories — this is the only size constraint.
