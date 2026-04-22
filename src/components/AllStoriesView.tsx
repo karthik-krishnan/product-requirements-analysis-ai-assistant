@@ -161,7 +161,7 @@ export default function AllStoriesView({ epics, storyValidations, storyAcceptedF
                 <Th col="category" label="Category" />
                 <Th col="priority" label="Priority" />
                 <Th col="points"   label="Pts" />
-                <Th col="score"    label="Quality" />
+                <Th col="score"    label="Quality Score" />
                 <Th col="acs"      label="ACs" />
               </tr>
             </thead>
