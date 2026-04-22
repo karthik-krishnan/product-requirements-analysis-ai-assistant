@@ -3,7 +3,7 @@
  *
  * Strategy: pass an epic with pre-existing stories so the component
  * starts in 'done' phase (no LLM call needed). Stories are shown as
- * cards; clicking "View / Edit" opens a modal with View / Edit / Discuss
+ * cards; clicking a card opens a modal with View / Edit / Discuss
  * / Validate tabs.
  */
 import { describe, it, expect, vi } from 'vitest'
@@ -20,11 +20,11 @@ vi.mock('../services/llm/client', () => ({
   isDemo: vi.fn().mockReturnValue(true),
 }))
 
-vi.mock('./StoryValidation', () => ({
+vi.mock('../../components/StoryValidation', () => ({
   ValidationSection: () => <div data-testid="validation-section" />,
 }))
 
-vi.mock('./JiraPushModal', () => ({
+vi.mock('../../components/JiraPushModal', () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="jira-modal"><button onClick={onClose}>Close</button></div>
   ),
@@ -93,9 +93,9 @@ function renderBreakdown(story: Story = makeStory()) {
   )
 }
 
-/** Opens the detail modal for the first story card */
+/** Opens the detail modal for the first story card by clicking the card title */
 async function openModal() {
-  await userEvent.click(screen.getByRole('button', { name: /view \/ edit/i }))
+  await userEvent.click(screen.getByText('Book a GP appointment'))
 }
 
 /** Opens modal then switches to the Edit tab */
@@ -127,9 +127,9 @@ describe('Card grid — default state', () => {
     expect(screen.getByText(/registered patient/i)).toBeInTheDocument()
   })
 
-  it('shows View / Edit button on each card', () => {
+  it('shows Validate button on each card', () => {
     renderBreakdown()
-    expect(screen.getByRole('button', { name: /view \/ edit/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /validate/i })).toBeInTheDocument()
   })
 
   it('does not show Save or Discard before modal is opened', () => {
@@ -142,7 +142,7 @@ describe('Card grid — default state', () => {
 // ─── Modal — View tab ─────────────────────────────────────────────────────────
 
 describe('Modal — View tab', () => {
-  it('opens the modal when "View / Edit" is clicked', async () => {
+  it('opens the modal when the card is clicked', async () => {
     renderBreakdown()
     await openModal()
     // soThat text is only in the modal view, not on the card
@@ -395,6 +395,13 @@ describe('Edge cases', () => {
     renderBreakdown(makeStory({ storyPoints: undefined }))
     await openEditTab()
     expect(screen.getByLabelText(/points/i)).toHaveValue(null)
+  })
+
+  it('Validate button opens modal on the Validate tab directly', async () => {
+    renderBreakdown()
+    await userEvent.click(screen.getByRole('button', { name: /validate/i }))
+    // validation-section is rendered only on the Validate tab
+    expect(screen.getByTestId('validation-section')).toBeInTheDocument()
   })
 
   it('can open and close the modal multiple times', async () => {

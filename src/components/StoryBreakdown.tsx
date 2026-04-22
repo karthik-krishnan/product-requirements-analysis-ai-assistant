@@ -520,14 +520,8 @@ function StoryCard({ story, index, validation, acceptedKeys, onView, onValidate 
 
       <div className="flex gap-2 pt-1">
         <button
-          onClick={e => { e.stopPropagation(); onView() }}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-gray-600 border border-gray-200 bg-white rounded-lg py-1.5 hover:bg-gray-50 transition-colors"
-        >
-          <FileText className="w-3.5 h-3.5" /> View / Edit
-        </button>
-        <button
           onClick={e => { e.stopPropagation(); onValidate() }}
-          className="flex items-center justify-center gap-1.5 text-xs text-brand-600 border border-brand-200 bg-brand-50 rounded-lg py-1.5 px-3 hover:bg-brand-100 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-brand-600 border border-brand-200 bg-brand-50 rounded-lg py-1.5 hover:bg-brand-100 transition-colors"
         >
           <ShieldCheck className="w-3.5 h-3.5" />
           {score === null ? 'Validate' : 'Re-validate'}
