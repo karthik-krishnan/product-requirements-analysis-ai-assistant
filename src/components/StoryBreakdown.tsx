@@ -585,7 +585,7 @@ function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidat
       className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[95vh] animate-fade-in-up">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col h-[90vh] animate-fade-in-up">
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-gray-100">
           <div className="flex-1 min-w-0 pr-4">
