@@ -142,8 +142,8 @@ export default function App() {
     switch (step) {
       case 'context':      return state.currentStep !== 'context'
       case 'requirements': return state.epics.length > 0
-      case 'epics':        return state.epics.some(e => (e.stories?.length ?? 0) > 0)
-      case 'stories':      return false
+      case 'epics':        return state.epics.length > 0
+      case 'stories':      return state.epics.some(e => (e.stories?.length ?? 0) > 0)
     }
   }
 
