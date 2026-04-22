@@ -843,7 +843,7 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
             onClick={() => onSelectEpic(null)}
             className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 hover:border-brand-300 transition-colors"
           >
-            ← All Epics
+            ← Epics
           </button>
           <div>
             <h1 className="text-lg font-semibold text-gray-900">Story Breakdown</h1>

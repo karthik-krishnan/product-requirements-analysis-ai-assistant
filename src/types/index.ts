@@ -118,7 +118,6 @@ export type AppStep =
   | 'context'
   | 'requirements'
   | 'epics'
-  | 'stories'
 
 export interface AppState {
   currentStep: AppStep

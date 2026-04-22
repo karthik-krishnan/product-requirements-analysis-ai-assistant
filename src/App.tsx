@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  BookOpen, FileText, Layers, BookMarked,
+  BookOpen, FileText, Layers,
   ChevronRight, Sparkles, Menu, X, Settings as SettingsIcon
 } from 'lucide-react'
 import type { AppStep, AppState, APISettings, ContextCapture as ContextCaptureType, ClarifyingQuestion, Epic, Story, INVESTValidation } from './types'
@@ -11,13 +11,12 @@ import EpicsView from './components/EpicsView'
 import StoryBreakdown from './components/StoryBreakdown'
 
 const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
-  { id: 'context',      label: 'Context',      icon: BookOpen,   description: 'Domain & tech context' },
-  { id: 'requirements', label: 'Requirements', icon: FileText,   description: 'Intake & AI exploration' },
-  { id: 'epics',        label: 'Epics',        icon: Layers,     description: 'Columnar epic view' },
-  { id: 'stories',      label: 'Stories',      icon: BookMarked, description: 'Breakdown & validation' },
+  { id: 'context',      label: 'Context',         icon: BookOpen,   description: 'Domain & tech context' },
+  { id: 'requirements', label: 'Requirements',    icon: FileText,   description: 'Intake & AI exploration' },
+  { id: 'epics',        label: 'Epics & Stories', icon: Layers,     description: 'Epics, breakdown & validation' },
 ]
 
-const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics', 'stories']
+const STEP_ORDER: AppStep[] = ['context', 'requirements', 'epics']
 
 const PROVIDER_LABELS: Record<string, string> = {
   demo:           'Demo mode',
@@ -26,48 +25,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   'azure-openai': 'Azure OpenAI',
   google:         'Google Gemini',
   ollama:         'Ollama (Local)',
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  High: 'bg-red-100 text-red-700',
-  Medium: 'bg-amber-100 text-amber-700',
-  Low: 'bg-green-100 text-green-700',
-}
-
-function EpicPicker({ epics, onSelect }: { epics: Epic[]; onSelect: (id: string) => void }) {
-  return (
-    <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in-up">
-      <div className="mb-8">
-        <h1 className="text-xl font-semibold text-gray-900">Story Breakdown</h1>
-        <p className="text-sm text-gray-500 mt-1">Select an epic to generate or review its user stories.</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {epics.map(epic => {
-          const storyCount = epic.stories?.length ?? 0
-          return (
-            <button
-              key={epic.id}
-              onClick={() => onSelect(epic.id)}
-              className="card p-4 text-left flex flex-col gap-3 hover:shadow-md hover:border-brand-200 transition-all"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className={`badge ${PRIORITY_COLORS[epic.priority]}`}>{epic.priority}</span>
-                {storyCount > 0
-                  ? <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5">{storyCount} stories</span>
-                  : <span className="text-xs text-gray-400">No stories yet</span>
-                }
-              </div>
-              <p className="text-sm font-semibold text-gray-900 leading-snug">{epic.title}</p>
-              <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{epic.description}</p>
-              <span className="text-xs text-brand-600 font-medium mt-auto">
-                {storyCount > 0 ? 'View / Edit stories →' : 'Generate stories →'}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
 }
 
 const SETTINGS_KEY = 'productpilot_settings'
@@ -123,8 +80,8 @@ export default function App() {
     setState(p => ({
       ...p,
       currentStep: step,
-      // Always show the epic picker when navigating to Stories via the sidebar
-      ...(step === 'stories' ? { selectedEpicId: null } : {}),
+      // Clicking Epics & Stories tab always returns to the epic grid
+      ...(step === 'epics' ? { selectedEpicId: null } : {}),
     }))
     setSidebarOpen(false)
   }
@@ -135,15 +92,13 @@ export default function App() {
       case 'context':      return true
       case 'requirements': return true
       case 'epics':        return state.epics.length > 0
-      case 'stories':      return state.epics.length > 0
     }
   }
   const isCompleted = (step: AppStep) => {
     switch (step) {
       case 'context':      return state.currentStep !== 'context'
       case 'requirements': return state.epics.length > 0
-      case 'epics':        return state.epics.length > 0
-      case 'stories':      return state.epics.some(e => (e.stories?.length ?? 0) > 0)
+      case 'epics':        return state.epics.some(e => (e.stories?.length ?? 0) > 0)
     }
   }
 
@@ -169,7 +124,7 @@ export default function App() {
   }
 
   const handleBreakIntoStories = (epicId: string) => {
-    setState(p => ({ ...p, selectedEpicId: epicId, currentStep: 'stories' }))
+    setState(p => ({ ...p, selectedEpicId: epicId, currentStep: 'epics' }))
   }
 
   const handleStoriesGenerated = (epicId: string, stories: Story[]) => {
@@ -305,7 +260,7 @@ export default function App() {
               onGenerateEpics={handleGenerateEpics}
             />
           )}
-          {state.currentStep === 'epics' && (
+          {state.currentStep === 'epics' && !state.selectedEpicId && (
             <EpicsView
               epics={state.epics}
               settings={state.settings}
@@ -313,30 +268,27 @@ export default function App() {
               onBreakIntoStories={handleBreakIntoStories}
             />
           )}
-          {state.currentStep === 'stories' && (
-            state.selectedEpicId
-              ? <StoryBreakdown
-                  epicId={state.selectedEpicId}
-                  epics={state.epics}
-                  settings={state.settings}
-                  context={state.context}
-                  storyValidations={state.storyValidations}
-                  storyAcceptedFixes={state.storyAcceptedFixes}
-                  onSelectEpic={epicId => setState(p => ({ ...p, selectedEpicId: epicId }))}
-
-                  onStoriesGenerated={handleStoriesGenerated}
-                  onStoryValidated={handleStoryValidated}
-                  onFixAccepted={handleFixAccepted}
-                  onAddStory={(epicId, story) => {
-                    setState(p => ({
-                      ...p,
-                      epics: p.epics.map(e =>
-                        e.id === epicId ? { ...e, stories: [...(e.stories || []), story] } : e
-                      ),
-                    }))
-                  }}
-                />
-              : <EpicPicker epics={state.epics} onSelect={epicId => setState(p => ({ ...p, selectedEpicId: epicId }))} />
+          {state.currentStep === 'epics' && state.selectedEpicId && (
+            <StoryBreakdown
+              epicId={state.selectedEpicId}
+              epics={state.epics}
+              settings={state.settings}
+              context={state.context}
+              storyValidations={state.storyValidations}
+              storyAcceptedFixes={state.storyAcceptedFixes}
+              onSelectEpic={epicId => setState(p => ({ ...p, selectedEpicId: epicId ?? null }))}
+              onStoriesGenerated={handleStoriesGenerated}
+              onStoryValidated={handleStoryValidated}
+              onFixAccepted={handleFixAccepted}
+              onAddStory={(epicId, story) => {
+                setState(p => ({
+                  ...p,
+                  epics: p.epics.map(e =>
+                    e.id === epicId ? { ...e, stories: [...(e.stories || []), story] } : e
+                  ),
+                }))
+              }}
+            />
           )}
         </div>
       </main>
