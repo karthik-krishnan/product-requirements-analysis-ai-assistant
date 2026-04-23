@@ -154,7 +154,7 @@ function INVESTRow({ principleKey, item, accepted, settings, story, onAcceptFix 
           </div>
         </td>
         <td className="py-3 px-4">
-          <p className="text-xs text-gray-600 line-clamp-1">{item.feedback}</p>
+          <p className="text-xs text-gray-600 leading-relaxed">{item.feedback}</p>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             {item.suggestions.length > 0 && (
               <button
