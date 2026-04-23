@@ -799,6 +799,21 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
   const [selectedStory, setSelectedStory] = useState<{ story: Story; tab: StoryTab } | null>(null)
   const [activePriority, setActivePriority] = useState<string | null>(null)
 
+  // Reset all story state when the selected epic changes
+  useEffect(() => {
+    const newStories = epics.find(e => e.id === epicId)?.stories || []
+    setPhase(newStories.length > 0 ? 'done' : 'input')
+    setStories(newStories)
+    setLocalStories(newStories)
+    setStoryVersions({})
+    setSelectedStory(null)
+    setActivePriority(null)
+    setError(null)
+    const ids = new Set(newStories.map(s => s.id))
+    revealedStoriesRef.current = new Set(ids)
+    setVisibleStoryIds(ids)
+  }, [epicId])
+
   useEffect(() => {
     const toReveal = localStories.filter(s => !revealedStoriesRef.current.has(s.id))
     toReveal.forEach((s, i) => {
