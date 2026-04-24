@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { callDemo } from '../../../../services/llm/providers/demo'
+import type { LLMMessage } from '../../../../services/llm/shared'
 import {
   MOCK_CLARIFYING_QUESTIONS,
   MOCK_EPIC_QUESTIONS,
@@ -11,6 +12,14 @@ import {
 
 // Speed up the simulated delay for tests
 vi.stubGlobal('setTimeout', (fn: () => void) => { fn(); return 0 })
+
+// Helper to build a minimal messages array with a user question at the end
+const msgs = (question: string): LLMMessage[] => [
+  { role: 'system',    content: 'system' },
+  { role: 'user',      content: 'context block' },
+  { role: 'assistant', content: 'initial greeting' },
+  { role: 'user',      content: question },
+]
 
 describe('callDemo', () => {
   it('returns clarifying questions in { questions: [] } envelope', async () => {
@@ -101,5 +110,81 @@ describe('callDemo', () => {
   it('returns empty object when promptType is undefined', async () => {
     const raw = await callDemo(undefined)
     expect(JSON.parse(raw)).toEqual({})
+  })
+})
+
+// ─── Demo chat responses — question-aware ─────────────────────────────────────
+
+describe('callDemo — epic-chat uses the user question to tailor the response', () => {
+  it('returns a non-empty string (not JSON)', async () => {
+    const result = await callDemo('epic-chat', msgs('what do we need here?'))
+    expect(result.length).toBeGreaterThan(0)
+    expect(() => JSON.parse(result)).toThrow() // plain prose, not JSON
+  })
+
+  it('addresses social login topics when asked about social login', async () => {
+    const result = await callDemo('epic-chat', msgs('what kind of social logins should we support?'))
+    expect(result.toLowerCase()).toMatch(/google|apple|oauth|provider|identity/)
+  })
+
+  it('addresses performance topics when asked about response times', async () => {
+    const result = await callDemo('epic-chat', msgs('what are the expected response times?'))
+    expect(result.toLowerCase()).toMatch(/latency|ms|performance|benchmark|target/)
+  })
+
+  it('addresses integration topics when asked about third-party APIs', async () => {
+    const result = await callDemo('epic-chat', msgs('how do we handle third-party integrations?'))
+    expect(result.toLowerCase()).toMatch(/integrat|api|contract|webhook|external/)
+  })
+
+  it('returns a different response for different question topics', async () => {
+    const authResponse = await callDemo('epic-chat', msgs('what social login providers do we need?'))
+    const perfResponse = await callDemo('epic-chat', msgs('what are the response time requirements?'))
+    expect(authResponse).not.toBe(perfResponse)
+  })
+
+  it('returns a sensible default for generic questions', async () => {
+    const result = await callDemo('epic-chat', msgs('can you help me understand this epic?'))
+    expect(result.length).toBeGreaterThan(0)
+    expect(() => JSON.parse(result)).toThrow()
+  })
+
+  it('still returns a response when no messages are passed (backward compat)', async () => {
+    const result = await callDemo('epic-chat')
+    expect(result.length).toBeGreaterThan(0)
+  })
+})
+
+describe('callDemo — story-chat uses the user question to tailor the response', () => {
+  it('returns a non-empty string (not JSON)', async () => {
+    const result = await callDemo('story-chat', msgs('what should the AC look like?'))
+    expect(result.length).toBeGreaterThan(0)
+    expect(() => JSON.parse(result)).toThrow()
+  })
+
+  it('addresses performance when asked about response times', async () => {
+    const result = await callDemo('story-chat', msgs('what is the industry benchmark for search response time?'))
+    expect(result.toLowerCase()).toMatch(/ms|millisecond|benchmark|threshold|200|300/)
+  })
+
+  it('addresses error handling when asked about failures', async () => {
+    const result = await callDemo('story-chat', msgs('what happens when the service is unavailable?'))
+    expect(result.toLowerCase()).toMatch(/error|fail|timeout|fallback|unavailab/)
+  })
+
+  it('addresses AC quality when asked about acceptance criteria', async () => {
+    const result = await callDemo('story-chat', msgs('are the acceptance criteria specific enough?'))
+    expect(result.toLowerCase()).toMatch(/criteria|ac|testable|measurable|specific/)
+  })
+
+  it('returns different responses for different question topics', async () => {
+    const perfResp = await callDemo('story-chat', msgs('what is the typical response time for search?'))
+    const acResp   = await callDemo('story-chat', msgs('are these acceptance criteria testable?'))
+    expect(perfResp).not.toBe(acResp)
+  })
+
+  it('still returns a response when no messages are passed (backward compat)', async () => {
+    const result = await callDemo('story-chat')
+    expect(result.length).toBeGreaterThan(0)
   })
 })

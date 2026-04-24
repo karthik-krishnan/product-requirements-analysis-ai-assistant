@@ -50,7 +50,7 @@ export async function callLLM(
 ): Promise<string> {
   const jsonMode = !promptType || !CHAT_PROMPT_TYPES.has(promptType)
   switch (settings.provider) {
-    case 'demo':         return callDemo(promptType)
+    case 'demo':         return callDemo(promptType, messages)
     case 'anthropic':    return callAnthropic(messages, settings, files)           // Anthropic has no explicit JSON mode flag
     case 'openai':       return callOpenAI(messages, settings, files, jsonMode)
     case 'azure-openai': return callAzureOpenAI(messages, settings, files, jsonMode)

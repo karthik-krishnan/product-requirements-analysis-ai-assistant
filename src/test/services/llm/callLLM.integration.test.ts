@@ -56,7 +56,7 @@ describe('callLLM factory routing', () => {
   it('routes demo provider to callDemo', async () => {
     const { callDemo } = await import('../../../services/llm/providers/demo')
     const result = await callLLM(messages, { ...base, provider: 'demo' }, [], 'generate-epics')
-    expect(callDemo).toHaveBeenCalledWith('generate-epics')
+    expect(callDemo).toHaveBeenCalledWith('generate-epics', messages)
     expect(result).toBe('{"demo":true}')
   })
 
@@ -106,11 +106,11 @@ describe('callLLM factory routing', () => {
     expect((callAnthropic as ReturnType<typeof vi.fn>).mock.calls[0]).toHaveLength(3)
   })
 
-  it('passes promptType only to demo provider', async () => {
+  it('passes promptType and messages to demo provider', async () => {
     const { callDemo } = await import('../../../services/llm/providers/demo')
     await callLLM(messages, { ...base, provider: 'demo' }, [], 'validate-invest')
-    expect(callDemo).toHaveBeenCalledWith('validate-invest')
-    expect((callDemo as ReturnType<typeof vi.fn>).mock.calls[0]).toHaveLength(1)
+    expect(callDemo).toHaveBeenCalledWith('validate-invest', messages)
+    expect((callDemo as ReturnType<typeof vi.fn>).mock.calls[0]).toHaveLength(2)
   })
 
   it('defaults files to empty array when not provided', async () => {
