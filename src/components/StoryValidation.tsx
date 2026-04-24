@@ -225,7 +225,14 @@ function INVESTRow({ principleKey, item, accepted, settings, story, onAcceptFix 
                   <div className="grid grid-cols-2 divide-x divide-brand-100">
                     {fix.splitStories.map((s, i) => (
                       <div key={i} className="p-3 bg-white">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">Story {i + 1}</p>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className={`w-4 h-4 rounded-full text-white text-[10px] flex items-center justify-center font-bold shrink-0 ${i === 0 ? 'bg-brand-500' : 'bg-emerald-500'}`}>
+                            {i + 1}
+                          </span>
+                          <p className="text-xs font-semibold text-gray-600">
+                            {i === 0 ? 'This story — streamlined' : 'New story — added to backlog'}
+                          </p>
+                        </div>
                         <p className="text-xs font-medium text-brand-700">{s.title}</p>
                         <p className="text-xs text-gray-500 mt-1 leading-relaxed">{s.description}</p>
                       </div>
@@ -249,9 +256,17 @@ function INVESTRow({ principleKey, item, accepted, settings, story, onAcceptFix 
                   </div>
                 </div>
               )}
-              <div className="mb-3">
-                {fix.diffs.map((diff, i) => <DiffBlock key={i} diff={diff} />)}
-              </div>
+              {fix.diffs.length > 0 && (
+                <div className="mb-3">
+                  {fix.isSplit && (
+                    <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-brand-100">
+                      <span className="w-4 h-4 rounded-full bg-brand-500 text-white text-[10px] flex items-center justify-center font-bold shrink-0">1</span>
+                      <p className="text-xs font-semibold text-brand-600">Story 1 — field-level changes to this story</p>
+                    </div>
+                  )}
+                  {fix.diffs.map((diff, i) => <DiffBlock key={i} diff={diff} />)}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => { onAcceptFix(fix.patch, fix.splitNewStory ?? fix.spikeNewStory); setFixOpen(false) }}
