@@ -321,6 +321,41 @@ describe('Fix with AI — split story', () => {
     })
   })
 
+  it('shows Story 2 in-scope items', async () => {
+    renderSection()
+    await clickFixWithAI()
+    await waitFor(() => {
+      // "Auto-suggest dropdown" also appears in the title, so use the unique sibling
+      expect(screen.getByText('In Scope')).toBeInTheDocument()
+      expect(screen.getByText(/Debounced API call/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows Story 2 out-of-scope items', async () => {
+    renderSection()
+    await clickFixWithAI()
+    await waitFor(() => {
+      expect(screen.getByText(/Voice search/i)).toBeInTheDocument()
+      expect(screen.getByText(/Search history/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows Story 2 assumptions', async () => {
+    renderSection()
+    await clickFixWithAI()
+    await waitFor(() => {
+      expect(screen.getByText(/Depends on keyword search story being live/i)).toBeInTheDocument()
+    })
+  })
+
+  it('shows Story 2 cross-functional needs', async () => {
+    renderSection()
+    await clickFixWithAI()
+    await waitFor(() => {
+      expect(screen.getByText(/UX: dropdown interaction spec/i)).toBeInTheDocument()
+    })
+  })
+
   it('shows Story 2 story points', async () => {
     renderSection()
     await clickFixWithAI()

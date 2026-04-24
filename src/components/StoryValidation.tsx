@@ -28,6 +28,39 @@ const PRIORITY_COLORS: Record<string, string> = {
   Low:    'bg-green-100 text-green-700',
 }
 
+// ─── Story2Section ────────────────────────────────────────────────────────────
+// Compact list section used in the split-story Story 2 preview.
+
+function Story2Section({
+  label, items, bullet, bulletClass, cap,
+}: {
+  label: string
+  items: string[]
+  bullet: string
+  bulletClass: string
+  cap: number
+}) {
+  if (!items || items.length === 0) return null
+  const visible  = items.slice(0, cap)
+  const overflow = items.length - cap
+  return (
+    <div className="mt-2">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{label}</p>
+      <div className="space-y-0.5">
+        {visible.map((item, i) => (
+          <div key={i} className="flex gap-1 text-xs text-gray-600 leading-relaxed">
+            <span className={`shrink-0 font-bold ${bulletClass}`}>{bullet}</span>
+            <span>{item}</span>
+          </div>
+        ))}
+        {overflow > 0 && (
+          <p className="text-[10px] text-gray-400 pl-4">+{overflow} more</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── DiffBlock ────────────────────────────────────────────────────────────────
 
 function DiffBlock({ diff }: { diff: FieldDiff }) {
@@ -248,24 +281,14 @@ function INVESTRow({ principleKey, item, accepted, settings, story, onAcceptFix 
                             As a <strong className="text-gray-700">{fix.splitNewStory.asA}</strong>,{' '}
                             I want to {fix.splitNewStory.iWantTo}.
                           </p>
-                          {fix.splitNewStory.acceptanceCriteria.length > 0 && (
-                            <div className="mt-2">
-                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Acceptance Criteria</p>
-                              <div className="space-y-0.5">
-                                {fix.splitNewStory.acceptanceCriteria.slice(0, 3).map((ac, i) => (
-                                  <div key={i} className="flex gap-1 text-xs text-gray-600 leading-relaxed">
-                                    <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />
-                                    <span>{ac}</span>
-                                  </div>
-                                ))}
-                                {fix.splitNewStory.acceptanceCriteria.length > 3 && (
-                                  <p className="text-[10px] text-gray-400 pl-4">
-                                    +{fix.splitNewStory.acceptanceCriteria.length - 3} more
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                          {/* ACs */}
+                          <Story2Section label="Acceptance Criteria" items={fix.splitNewStory.acceptanceCriteria} bullet="✓" bulletClass="text-emerald-500" cap={3} />
+                          {/* In / Out of scope */}
+                          <Story2Section label="In Scope"       items={fix.splitNewStory.inScope}            bullet="✓" bulletClass="text-emerald-500" cap={2} />
+                          <Story2Section label="Out of Scope"   items={fix.splitNewStory.outOfScope}         bullet="✗" bulletClass="text-red-400"     cap={2} />
+                          {/* Assumptions & cross-functional */}
+                          <Story2Section label="Assumptions"         items={fix.splitNewStory.assumptions}         bullet="•" bulletClass="text-amber-400"  cap={2} />
+                          <Story2Section label="Cross-functional"    items={fix.splitNewStory.crossFunctionalNeeds} bullet="→" bulletClass="text-brand-400"  cap={2} />
                           {fix.splitNewStory.storyPoints != null && (
                             <span className="inline-block mt-2 text-[10px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
                               {fix.splitNewStory.storyPoints} pts
