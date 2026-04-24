@@ -57,6 +57,8 @@ function renderEpicsView(epics: Epic[], settings: APISettings) {
     <EpicsView
       epics={epics}
       settings={settings}
+      context={{ domainText: '', domainFiles: [], techText: '', techFiles: [] }}
+      rawRequirements=""
       epicChats={{}}
       onEpicsChange={vi.fn()}
       onBreakIntoStories={vi.fn()}

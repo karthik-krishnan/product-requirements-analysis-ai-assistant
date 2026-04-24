@@ -1,6 +1,25 @@
-import { describe, it, expect } from 'vitest'
-import { isDemo, hasValidKey, isLiveMode } from '../../../services/llm/client'
-import type { APISettings } from '../../../types'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isDemo, hasValidKey, isLiveMode, callLLM } from '../../../services/llm/client'
+import type { APISettings, LLMMessage } from '../../../types'
+
+// ─── Provider isolation mocks ─────────────────────────────────────────────────
+// Each real provider module is mocked so we can assert which one callLLM invokes
+// without making network calls. The demo provider is imported via the real module
+// so its actual canned-response logic is exercised (not mocked away).
+
+vi.mock('../../../services/llm/providers/anthropic',  () => ({ callAnthropic:  vi.fn().mockResolvedValue('anthropic-response')  }))
+vi.mock('../../../services/llm/providers/openai',     () => ({ callOpenAI:     vi.fn().mockResolvedValue('openai-response')     }))
+vi.mock('../../../services/llm/providers/azure',      () => ({ callAzureOpenAI:vi.fn().mockResolvedValue('azure-response')      }))
+vi.mock('../../../services/llm/providers/google',     () => ({ callGoogle:     vi.fn().mockResolvedValue('google-response')     }))
+vi.mock('../../../services/llm/providers/ollama',     () => ({ callOllama:     vi.fn().mockResolvedValue('ollama-response')     }))
+
+import { callAnthropic  } from '../../../services/llm/providers/anthropic'
+import { callOpenAI     } from '../../../services/llm/providers/openai'
+import { callAzureOpenAI} from '../../../services/llm/providers/azure'
+import { callGoogle     } from '../../../services/llm/providers/google'
+import { callOllama     } from '../../../services/llm/providers/ollama'
+
+const MESSAGES: LLMMessage[] = [{ role: 'user', content: 'hello' }]
 
 const base: APISettings = {
   provider: 'demo',
@@ -118,5 +137,128 @@ describe('isLiveMode', () => {
   it('treats openai the same way', () => {
     expect(isLiveMode(withProvider('openai', { openaiKey: 'sk-abc' }))).toBe(true)
     expect(isLiveMode(withProvider('openai', { openaiKey: '' }))).toBe(false)
+  })
+})
+
+// ─── callLLM — provider routing isolation ────────────────────────────────────
+//
+// These tests enforce the invariant that:
+//   • demo provider → callDemo only (no real provider ever called)
+//   • real providers → their specific adapter called, callDemo never called
+//
+// This guards against accidentally wiring a chat panel to demo data in live
+// mode or calling live LLMs during demo walkthroughs.
+
+describe('callLLM — demo mode never calls live providers', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.mocked(callAnthropic).mockClear()
+    vi.mocked(callOpenAI).mockClear()
+    vi.mocked(callAzureOpenAI).mockClear()
+    vi.mocked(callGoogle).mockClear()
+    vi.mocked(callOllama).mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns a non-empty string in demo mode without calling any live provider', async () => {
+    const promise = callLLM(MESSAGES, withProvider('demo'), [], 'generate-epics')
+    vi.runAllTimers()
+    const result = await promise
+    expect(result.length).toBeGreaterThan(0)
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+
+  it('returns demo response for every known task type without hitting live providers', async () => {
+    const taskTypes = [
+      'clarifying-questions',
+      'epic-clarifying-questions',
+      'generate-epics',
+      'generate-stories',
+      'validate-invest',
+      'fix-invest:small',
+      'epic-chat',
+      'story-chat',
+    ]
+    // Fire all calls concurrently, then flush all timers at once so the
+    // simulated demo delay doesn't make the test time out.
+    const promises = taskTypes.map(taskType =>
+      callLLM(MESSAGES, withProvider('demo'), [], taskType)
+    )
+    vi.runAllTimers()
+    const results = await Promise.all(promises)
+    results.forEach((result, i) => {
+      expect(result.length, `task '${taskTypes[i]}' should return non-empty demo response`).toBeGreaterThan(0)
+    })
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+})
+
+describe('callLLM — live mode routes to the correct provider only', () => {
+  beforeEach(() => {
+    vi.mocked(callAnthropic).mockClear()
+    vi.mocked(callOpenAI).mockClear()
+    vi.mocked(callAzureOpenAI).mockClear()
+    vi.mocked(callGoogle).mockClear()
+    vi.mocked(callOllama).mockClear()
+  })
+
+  it('routes anthropic → callAnthropic only', async () => {
+    await callLLM(MESSAGES, withProvider('anthropic', { anthropicKey: 'sk-ant-test' }), [])
+    expect(callAnthropic).toHaveBeenCalledOnce()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+
+  it('routes openai → callOpenAI only', async () => {
+    await callLLM(MESSAGES, withProvider('openai', { openaiKey: 'sk-test' }), [])
+    expect(callOpenAI).toHaveBeenCalledOnce()
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+
+  it('routes azure-openai → callAzureOpenAI only', async () => {
+    await callLLM(MESSAGES, withProvider('azure-openai', {
+      azureKey: 'key', azureEndpoint: 'https://x.openai.azure.com', azureDeployment: 'gpt4',
+    }), [])
+    expect(callAzureOpenAI).toHaveBeenCalledOnce()
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+
+  it('routes google → callGoogle only', async () => {
+    await callLLM(MESSAGES, withProvider('google', { googleKey: 'AIza-test' }), [])
+    expect(callGoogle).toHaveBeenCalledOnce()
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callOllama).not.toHaveBeenCalled()
+  })
+
+  it('routes ollama → callOllama only', async () => {
+    await callLLM(MESSAGES, withProvider('ollama', {
+      ollamaEndpoint: 'http://localhost:11434', ollamaModel: 'llama3',
+    }), [])
+    expect(callOllama).toHaveBeenCalledOnce()
+    expect(callAnthropic).not.toHaveBeenCalled()
+    expect(callOpenAI).not.toHaveBeenCalled()
+    expect(callAzureOpenAI).not.toHaveBeenCalled()
+    expect(callGoogle).not.toHaveBeenCalled()
   })
 })

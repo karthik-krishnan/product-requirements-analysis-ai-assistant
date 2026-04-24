@@ -292,6 +292,8 @@ export default function App() {
                 ? <EpicsView
                     epics={state.epics}
                     settings={state.settings}
+                    context={state.context}
+                    rawRequirements={state.rawRequirements}
                     epicChats={state.epicChats}
                     onEpicsChange={handleEpicsChange}
                     onBreakIntoStories={handleBreakIntoStories}

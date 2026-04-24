@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Layers, ChevronRight, Edit3, MessageSquare, X, Tag, ArrowRight, Sparkles, Check, Download } from 'lucide-react'
-import type { Epic, APISettings, ChatEntry } from '../types'
+import { Layers, ChevronRight, Edit3, MessageSquare, X, Tag, ArrowRight, Sparkles, Check, Download, Loader2 } from 'lucide-react'
+import type { Epic, APISettings, ChatEntry, ContextCapture } from '../types'
 import { MOCK_EPICS } from '../data/mockData'
 import { exportAllToExcel } from '../utils/export'
 import JiraPushModal from './JiraPushModal'
-import { isDemo } from '../services/llm/client'
+import { callLLM, isDemo } from '../services/llm/client'
+import { buildEpicChatMessages } from '../prompts/epicChat'
 
 const PRIORITY_COLORS: Record<string, string> = {
   High: 'bg-red-100 text-red-700',
@@ -33,6 +34,10 @@ const MOCK_AI_EPIC_FEEDBACK: Record<string, string> = {
 
 interface EpicDialogProps {
   epic: Epic
+  allEpics: Epic[]
+  settings: APISettings
+  context: ContextCapture
+  rawRequirements: string
   initialChat?: ChatEntry[]
   onClose: () => void
   onSave: (epic: Epic) => void
@@ -40,7 +45,7 @@ interface EpicDialogProps {
   onChatUpdate?: (messages: ChatEntry[]) => void
 }
 
-function EpicDialog({ epic, initialChat, onClose, onSave, onBreakIntoStories, onChatUpdate }: EpicDialogProps) {
+function EpicDialog({ epic, allEpics, settings, context, rawRequirements, initialChat, onClose, onSave, onBreakIntoStories, onChatUpdate }: EpicDialogProps) {
   const [editedEpic, setEditedEpic] = useState(epic)
   const [activeTab, setActiveTab] = useState<'edit' | 'chat'>('edit')
   const [chatInput, setChatInput] = useState('')
@@ -49,7 +54,9 @@ function EpicDialog({ epic, initialChat, onClose, onSave, onBreakIntoStories, on
       {
         id: '1',
         role: 'assistant',
-        content: MOCK_AI_EPIC_FEEDBACK[epic.id] || `I've reviewed this epic. It looks well-structured. What aspects would you like to refine?`,
+        content: isDemo(settings)
+          ? (MOCK_AI_EPIC_FEEDBACK[epic.id] || `I've reviewed this epic. What aspects would you like to explore or refine?`)
+          : `I've reviewed the epic "${epic.title}" in the context of your product requirements and the rest of the portfolio. What would you like to explore or challenge?`,
       },
     ]
   )
@@ -63,23 +70,35 @@ function EpicDialog({ epic, initialChat, onClose, onSave, onBreakIntoStories, on
 
   useEffect(() => { onChatUpdate?.(chatMessages) }, [chatMessages])
 
-  const sendChat = () => {
-    if (!chatInput.trim()) return
-    const userMsg = { id: Date.now().toString(), role: 'user' as const, content: chatInput.trim() }
-    setChatMessages(prev => [...prev, userMsg])
+  const sendChat = async () => {
+    const text = chatInput.trim()
+    if (!text) return
+    const userMsg: ChatEntry = { id: Date.now().toString(), role: 'user', content: text }
+    const updatedHistory = [...chatMessages, userMsg]
+    setChatMessages(updatedHistory)
     setChatInput('')
     setIsTyping(true)
-    setTimeout(() => {
+    try {
+      const messages = buildEpicChatMessages(
+        epic, allEpics, context, rawRequirements,
+        chatMessages, // history before the new message
+        text,
+      )
+      const response = await callLLM(messages, settings, [], 'epic-chat')
+      setChatMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response,
+      }])
+    } catch {
+      setChatMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Sorry, I couldn't reach the AI right now. Please try again.`,
+      }])
+    } finally {
       setIsTyping(false)
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant' as const,
-          content: `Good point. Based on your input, I'd recommend also capturing the edge case around ${chatInput.toLowerCase().includes('user') ? 'user session expiry during checkout' : 'concurrent modification conflicts'}. This could surface as a cross-functional requirement with the security team.`,
-        },
-      ])
-    }, 1200)
+    }
   }
 
   return createPortal(
@@ -207,8 +226,8 @@ function EpicDialog({ epic, initialChat, onClose, onSave, onBreakIntoStories, on
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendChat()}
                 />
-                <button onClick={sendChat} disabled={!chatInput.trim()} className="btn-primary px-3">
-                  <ArrowRight className="w-4 h-4" />
+                <button onClick={sendChat} disabled={!chatInput.trim() || isTyping} className="btn-primary px-3">
+                  {isTyping ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -292,13 +311,15 @@ function EpicCard({ epic, index, onOpen, onBreakIntoStories }: EpicCardProps) {
 interface Props {
   epics: Epic[]
   settings: APISettings
+  context: ContextCapture
+  rawRequirements: string
   epicChats: Record<string, ChatEntry[]>
   onEpicsChange: (epics: Epic[]) => void
   onBreakIntoStories: (epicId: string) => void
   onEpicChatUpdate: (epicId: string, messages: ChatEntry[]) => void
 }
 
-export default function EpicsView({ epics: propEpics, settings, epicChats, onEpicsChange, onBreakIntoStories, onEpicChatUpdate }: Props) {
+export default function EpicsView({ epics: propEpics, settings, context, rawRequirements, epicChats, onEpicsChange, onBreakIntoStories, onEpicChatUpdate }: Props) {
   const epics = propEpics.length > 0 ? propEpics : (isDemo(settings) ? MOCK_EPICS : [])
   const [selectedEpic, setSelectedEpic] = useState<Epic | null>(null)
   const [showJira, setShowJira] = useState(false)
@@ -429,6 +450,10 @@ export default function EpicsView({ epics: propEpics, settings, epicChats, onEpi
       {selectedEpic && (
         <EpicDialog
           epic={selectedEpic}
+          allEpics={epics}
+          settings={settings}
+          context={context}
+          rawRequirements={rawRequirements}
           initialChat={epicChats[selectedEpic.id]}
           onClose={() => setSelectedEpic(null)}
           onSave={handleSave}

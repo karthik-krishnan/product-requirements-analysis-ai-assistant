@@ -10,9 +10,10 @@ import { ValidationSection } from './StoryValidation'
 import { storyToMarkdown, copyToClipboard, exportStoriesToExcel } from '../utils/export'
 import JiraPushModal from './JiraPushModal'
 import { getQuestionCount } from '../utils/assistanceLevels'
-import { callLLM, isLiveMode } from '../services/llm/client'
+import { callLLM, isLiveMode, isDemo } from '../services/llm/client'
 import { buildClarifyingQuestionsPrompt, parseClarifyingQuestions } from '../prompts/clarifyingQuestions'
 import { buildGenerateStoriesPrompt, parseStories } from '../prompts/generateStories'
+import { buildStoryChatMessages } from '../prompts/storyChat'
 
 interface Props {
   epicId: string
@@ -336,42 +337,45 @@ function StoryContent({ story }: { story: Story }) {
 
 // ─── StoryDiscussPanel ────────────────────────────────────────────────────────
 
-function StoryDiscussPanel({ story, initialMessages, onMessagesChange }: { story: Story; initialMessages?: ChatMsg[]; onMessagesChange?: (msgs: ChatMsg[]) => void }) {
+function StoryDiscussPanel({ story, epic, settings, context, initialMessages, onMessagesChange }: {
+  story: Story
+  epic: Epic
+  settings: APISettings
+  context: ContextCapture
+  initialMessages?: ChatMsg[]
+  onMessagesChange?: (msgs: ChatMsg[]) => void
+}) {
   const [messages, setMessages] = useState<ChatMsg[]>(
     initialMessages ?? [
-      { id: '0', role: 'assistant', content: `What would you like to discuss about "${story.title}"? I can help clarify scope, refine acceptance criteria, or explore edge cases.` },
+      { id: '0', role: 'assistant', content: `I've reviewed "${story.title}" in the context of the ${epic.title} epic. What would you like to explore — scope boundaries, acceptance criteria, edge cases, or sizing?` },
     ]
   )
-  const [input, setInput]     = useState('')
-  const [typing, setTyping]   = useState(false)
+  const [input, setInput]   = useState('')
+  const [typing, setTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, typing])
   useEffect(() => { onMessagesChange?.(messages) }, [messages])
 
-  const MOCK_REPLIES = [
-    `Good point. For the "${story.title}" story, I'd recommend also considering the edge case where the user has incomplete profile data — it could affect the acceptance criteria around data validation.`,
-    `That's worth exploring. The scope boundary here is important: we should confirm with the team whether this scenario falls under this story or would be better tracked as a separate dependency.`,
-    `Agreed. I'd suggest adding an explicit acceptance criterion that covers the error state — for example, what the user sees when the action fails. This keeps the story testable.`,
-    `The assumption you raised is valid. I'd recommend documenting it explicitly in the story assumptions so the team is aligned before sprint planning.`,
-  ]
-  const replyIdx = useRef(0)
-
-  const send = () => {
-    if (!input.trim()) return
+  const send = async () => {
     const text = input.trim()
+    if (!text) return
     setInput('')
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text }])
     setTyping(true)
-    setTimeout(() => {
-      setTyping(false)
+    try {
+      const llmMessages = buildStoryChatMessages(story, epic, context, messages, text)
+      const response = await callLLM(llmMessages, settings, [], 'story-chat')
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: response }])
+    } catch {
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: MOCK_REPLIES[replyIdx.current % MOCK_REPLIES.length],
+        content: `Sorry, I couldn't reach the AI right now. Please try again.`,
       }])
-      replyIdx.current++
-    }, 1200)
+    } finally {
+      setTyping(false)
+    }
   }
 
   return (
@@ -557,9 +561,11 @@ function CopyMarkdownButton({ story }: { story: Story }) {
   )
 }
 
-function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory, onClose, initialTab = 'view', initialDiscussMessages, onDiscussMessagesChange }: {
+function StoryDetailModal({ story, epic, settings, context, validation, acceptedKeys, onValidated, onFixAccepted, onStoryChange, onAddStory, onClose, initialTab = 'view', initialDiscussMessages, onDiscussMessagesChange }: {
   story: Story
+  epic: Epic
   settings: APISettings
+  context: ContextCapture
   validation: INVESTValidation | null
   acceptedKeys: Set<string>
   onValidated: (v: INVESTValidation) => void
@@ -710,7 +716,14 @@ function StoryDetailModal({ story, settings, validation, acceptedKeys, onValidat
 
           {tab === 'discuss' && (
             <div className="p-5">
-              <StoryDiscussPanel story={story} initialMessages={initialDiscussMessages} onMessagesChange={onDiscussMessagesChange} />
+              <StoryDiscussPanel
+                story={story}
+                epic={epic}
+                settings={settings}
+                context={context}
+                initialMessages={initialDiscussMessages}
+                onMessagesChange={onDiscussMessagesChange}
+              />
             </div>
           )}
 
@@ -1056,7 +1069,9 @@ export default function StoryBreakdown({ epicId, epics, settings, context, story
       {selectedStory && (
         <StoryDetailModal
           story={selectedStory.story}
+          epic={epic}
           settings={settings}
+          context={context}
           initialTab={selectedStory.tab}
           validation={storyValidations[selectedStory.story.id] ?? null}
           acceptedKeys={new Set(storyAcceptedFixes[selectedStory.story.id] ?? [])}
