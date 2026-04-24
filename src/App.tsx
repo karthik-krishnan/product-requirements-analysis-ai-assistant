@@ -121,6 +121,7 @@ export default function App() {
 
   const handleGenerateEpics = (epics: Epic[]) => {
     setState(p => ({ ...p, currentStep: 'epics', epics }))
+    setEpicView('grid')
   }
 
   const handleEpicsChange = (epics: Epic[]) => {
