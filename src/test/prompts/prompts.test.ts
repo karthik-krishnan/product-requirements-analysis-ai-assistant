@@ -54,26 +54,27 @@ describe('parseClarifyingQuestions', () => {
 
 describe('buildClarifyingQuestionsPrompt', () => {
   it('returns messages array with system and user roles', () => {
-    const messages = buildClarifyingQuestionsPrompt('Build a marketplace', null, null, 3)
+    const messages = buildClarifyingQuestionsPrompt('Build a marketplace', null, null, [3, 5])
     expect(messages.some(m => m.role === 'system')).toBe(true)
     expect(messages.some(m => m.role === 'user')).toBe(true)
   })
 
   it('embeds the requirements in the user message', () => {
-    const messages = buildClarifyingQuestionsPrompt('Build a marketplace', null, null, 3)
+    const messages = buildClarifyingQuestionsPrompt('Build a marketplace', null, null, [3, 5])
     const userMsg = messages.find(m => m.role === 'user')!
     expect(userMsg.content).toContain('Build a marketplace')
   })
 
-  it('embeds the requested question count', () => {
-    const messages = buildClarifyingQuestionsPrompt('Requirements', null, null, 2)
+  it('embeds the min and max question counts in the user message', () => {
+    const messages = buildClarifyingQuestionsPrompt('Requirements', null, null, [2, 4])
     const userMsg = messages.find(m => m.role === 'user')!
     expect(userMsg.content).toContain('2')
+    expect(userMsg.content).toContain('4')
   })
 
   it('embeds domain context when provided via workspace', () => {
     const workspace = { id: 'w1', name: 'Team', domainText: 'Healthcare domain', domainFiles: [], techText: '', techFiles: [] }
-    const messages = buildClarifyingQuestionsPrompt('Req', null, workspace, 1)
+    const messages = buildClarifyingQuestionsPrompt('Req', null, workspace, [2, 3])
     const userMsg = messages.find(m => m.role === 'user')!
     expect(userMsg.content).toContain('Healthcare domain')
   })

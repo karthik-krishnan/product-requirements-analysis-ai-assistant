@@ -3,7 +3,7 @@ import { Send, SkipForward, Sparkles, MessageSquare, AlertCircle, Loader2 } from
 import type { APISettings, EnterpriseConfig, Workspace, ClarifyingQuestion, ChatMessage, Epic } from '../types'
 import { getAllContextFiles } from '../utils/contextUtils'
 import ChatBubble, { TypingIndicator } from './ChatBubble'
-import { getQuestionCount } from '../utils/assistanceLevels'
+import { getLevelMeta } from '../utils/assistanceLevels'
 import { callLLM, isLiveMode } from '../services/llm/client'
 import { buildClarifyingQuestionsPrompt, parseClarifyingQuestions } from '../prompts/clarifyingQuestions'
 import { buildGenerateEpicsPrompt, parseEpics } from '../prompts/generateEpics'
@@ -57,7 +57,7 @@ export default function RequirementsInput({
   }
 
   const startClarifying = async () => {
-    const questionCount = getQuestionCount(settings.assistanceLevel)
+    const { range } = getLevelMeta(settings.assistanceLevel)
     onRequirementsChange(localReqs)
     setPhase('clarifying')
     setError(null)
@@ -68,13 +68,13 @@ export default function RequirementsInput({
     })
     try {
       const raw = await callLLM(
-        buildClarifyingQuestionsPrompt(localReqs, enterprise, workspace, questionCount),
+        buildClarifyingQuestionsPrompt(localReqs, enterprise, workspace, range),
         settings,
         getAllContextFiles(enterprise, workspace),
         'clarifying-questions',
       )
       const qs = parseClarifyingQuestions(raw)
-      questionsRef.current = qs.slice(0, questionCount)
+      questionsRef.current = qs.slice(0, range[1])
       setLlmLoading(false)
       simulateTyping(() => {
         addMessage({ role: 'assistant', content: qs[0].question, options: qs[0].options })

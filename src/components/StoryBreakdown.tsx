@@ -11,7 +11,7 @@ import { getAllContextFiles } from '../utils/contextUtils'
 import { ValidationSection } from './StoryValidation'
 import { storyToMarkdown, copyToClipboard, exportStoriesToExcel } from '../utils/export'
 import JiraPushModal from './JiraPushModal'
-import { getQuestionCount } from '../utils/assistanceLevels'
+import { getLevelMeta } from '../utils/assistanceLevels'
 import { callLLM, isLiveMode, isDemo } from '../services/llm/client'
 import { buildClarifyingQuestionsPrompt, parseClarifyingQuestions } from '../prompts/clarifyingQuestions'
 import { buildGenerateStoriesPrompt, parseStories } from '../prompts/generateStories'
@@ -127,18 +127,18 @@ function DiscoveryChat({ epic, settings, enterprise, workspace, onComplete, onDi
   }
 
   const startDiscovery = async () => {
-    const questionCount = getQuestionCount(settings.assistanceLevel)
+    const { range } = getLevelMeta(settings.assistanceLevel)
     setLlmLoading(true)
     addMsg({ role: 'assistant', content: `Let me ask a few focused questions to help define precise stories for **"${epic.title}"**…` })
     try {
       const raw = await callLLM(
-        buildClarifyingQuestionsPrompt(`Epic: ${epic.title}\n${epic.description}`, enterprise, workspace, questionCount),
+        buildClarifyingQuestionsPrompt(`Epic: ${epic.title}\n${epic.description}`, enterprise, workspace, range),
         settings,
         [],
         'epic-clarifying-questions',
       )
       const qs = parseClarifyingQuestions(raw)
-      questionsRef.current = qs.slice(0, questionCount)
+      questionsRef.current = qs.slice(0, range[1])
       setLlmLoading(false)
       simulateTyping(() => addMsg({ role: 'assistant', content: qs[0].question, options: qs[0].options }), 300)
     } catch (err) {

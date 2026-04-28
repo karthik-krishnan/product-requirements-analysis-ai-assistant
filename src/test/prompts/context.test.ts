@@ -66,39 +66,39 @@ const getUserMessage = (messages: LLMMessage[]) => messages.find(m => m.role ===
 describe('buildClarifyingQuestionsPrompt — context injection', () => {
   it('embeds workspace domainText in the user message', () => {
     const ws = makeWorkspace({ domainText: 'B2C retail platform with SAP backend' })
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build a checkout', null, ws, 2))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build a checkout', null, ws, [2, 4]))
     expect(content).toContain('B2C retail platform with SAP backend')
   })
 
   it('embeds workspace techText in the user message', () => {
     const ws = makeWorkspace({ techText: 'React frontend, Node.js API, PostgreSQL' })
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build a checkout', null, ws, 2))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build a checkout', null, ws, [2, 4]))
     expect(content).toContain('React frontend, Node.js API, PostgreSQL')
   })
 
   it('shows (no context provided) placeholder when both are null', () => {
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Requirements', null, null, 1))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Requirements', null, null, [2, 3]))
     expect(content).toContain('(no context provided)')
   })
 
   it('includes both enterprise and workspace context in the same message', () => {
     const ent = makeEnterprise({ domainText: 'Healthcare SaaS' })
     const ws  = makeWorkspace({ techText: 'AWS Lambda, DynamoDB' })
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', ent, ws, 3))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', ent, ws, [3, 5]))
     expect(content).toContain('Healthcare SaaS')
     expect(content).toContain('AWS Lambda, DynamoDB')
   })
 
   it('labels enterprise context with company name', () => {
     const ent = makeEnterprise({ name: 'MegaCorp', domainText: 'Enterprise retail' })
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', ent, null, 1))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', ent, null, [2, 3]))
     expect(content).toContain('MegaCorp')
     expect(content).toContain('Enterprise retail')
   })
 
   it('labels workspace context with team name', () => {
     const ws = makeWorkspace({ name: 'Mobile Team', techText: 'React Native' })
-    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', null, ws, 1))
+    const content = getUserMessage(buildClarifyingQuestionsPrompt('Build it', null, ws, [2, 3]))
     expect(content).toContain('Mobile Team')
     expect(content).toContain('React Native')
   })
