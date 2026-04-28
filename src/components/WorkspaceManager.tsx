@@ -248,7 +248,7 @@ export default function WorkspaceManager({
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
           {/* Info banner */}
           <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-600">
             <div className="shrink-0 mt-0.5">💡</div>
