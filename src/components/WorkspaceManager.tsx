@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import {
   X, Layers, Plus, Trash2, Edit3, Check, BookOpen, Cpu,
   Upload, FileText, AlertTriangle, Loader2, ChevronDown, ChevronUp, Settings,
@@ -45,8 +45,9 @@ function ContextSection({
   placeholder: string; nativePDF: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
 
-  const processFiles = async (rawFiles: File[]) => {
+  const processFiles = useCallback(async (rawFiles: File[]) => {
     const placeholders: UploadedFile[] = rawFiles.map(f => ({
       id: Math.random().toString(36).slice(2), name: f.name, size: f.size, type: f.type, loading: true,
     }))
@@ -57,7 +58,7 @@ function ContextSection({
       return { ...placeholders[i], content, contentType: eff, loading: false } as UploadedFile
     }))
     onFilesChange([...files, ...resolved])
-  }
+  }, [files, onFilesChange, nativePDF])
 
   return (
     <div>
@@ -65,18 +66,28 @@ function ContextSection({
         <div className={`w-6 h-6 rounded-md flex items-center justify-center ${accentColor}`}>{icon}</div>
         <span className="text-xs font-semibold text-gray-700">{label}</span>
       </div>
-      <textarea className="textarea-field text-xs" rows={5} placeholder={placeholder}
+      <textarea className="textarea-field text-xs" rows={4} placeholder={placeholder}
         value={textValue} onChange={e => onTextChange(e.target.value)} />
-      <div className="flex items-center justify-between mt-1.5 mb-2">
-        <span className="text-xs text-gray-400">{textValue.length.toLocaleString()} chars</span>
-        <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium">
-          <Upload className="w-3 h-3" /> Attach file
-        </button>
+      {/* Drop zone */}
+      <div
+        className={`mt-2 border-2 border-dashed rounded-xl px-4 py-4 text-center cursor-pointer transition-colors ${
+          dragging ? 'border-brand-400 bg-brand-50' : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'
+        }`}
+        onClick={() => fileRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); processFiles(Array.from(e.dataTransfer.files)) }}
+      >
+        <Upload className="w-5 h-5 text-gray-300 mx-auto mb-1.5" />
+        <p className="text-xs font-semibold text-gray-500">Drag &amp; drop or click to upload</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          TXT, MD — up to 20 MB each · PDF requires Anthropic or Gemini
+        </p>
         <input ref={fileRef} type="file" multiple accept=".pdf,.txt,.md" className="hidden"
           onChange={e => { processFiles(Array.from(e.target.files || [])); e.target.value = '' }} />
       </div>
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 mt-2">
           {files.map(f => (
             <FileChip key={f.id} file={f} onRemove={() => onFilesChange(files.filter(x => x.id !== f.id))} />
           ))}
