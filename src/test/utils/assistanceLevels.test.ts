@@ -26,35 +26,35 @@ describe('getQuestionCount', () => {
     expect(getQuestionCount(0)).toBe(0)
   })
 
-  it('returns a value within range for Light Touch (level 1: 1–2)', () => {
+  it('returns a value within range for Light Touch (level 1: 2–3)', () => {
     for (let i = 0; i < 20; i++) {
       const count = getQuestionCount(1)
-      expect(count).toBeGreaterThanOrEqual(1)
-      expect(count).toBeLessThanOrEqual(2)
-    }
-  })
-
-  it('returns a value within range for Collaborative (level 2: 2–3)', () => {
-    for (let i = 0; i < 20; i++) {
-      const count = getQuestionCount(2)
       expect(count).toBeGreaterThanOrEqual(2)
       expect(count).toBeLessThanOrEqual(3)
     }
   })
 
-  it('returns a value within range for Thorough (level 3: 3–4)', () => {
+  it('returns a value within range for Collaborative (level 2: 4–5)', () => {
     for (let i = 0; i < 20; i++) {
-      const count = getQuestionCount(3)
-      expect(count).toBeGreaterThanOrEqual(3)
-      expect(count).toBeLessThanOrEqual(4)
+      const count = getQuestionCount(2)
+      expect(count).toBeGreaterThanOrEqual(4)
+      expect(count).toBeLessThanOrEqual(5)
     }
   })
 
-  it('returns a value within range for Deep Dive (level 4: 4–5)', () => {
+  it('returns a value within range for Thorough (level 3: 6–7)', () => {
+    for (let i = 0; i < 20; i++) {
+      const count = getQuestionCount(3)
+      expect(count).toBeGreaterThanOrEqual(6)
+      expect(count).toBeLessThanOrEqual(7)
+    }
+  })
+
+  it('returns a value within range for Deep Dive (level 4: 8–10)', () => {
     for (let i = 0; i < 20; i++) {
       const count = getQuestionCount(4)
-      expect(count).toBeGreaterThanOrEqual(4)
-      expect(count).toBeLessThanOrEqual(5)
+      expect(count).toBeGreaterThanOrEqual(8)
+      expect(count).toBeLessThanOrEqual(10)
     }
   })
 
