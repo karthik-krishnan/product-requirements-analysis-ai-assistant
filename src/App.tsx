@@ -31,12 +31,24 @@ const NAV_STEPS: { id: AppStep; label: string; icon: React.ComponentType<{ class
 const STEP_ORDER: AppStep[] = ['requirements', 'epics']
 
 const PROVIDER_LABELS: Record<string, string> = {
-  demo:           'Demo mode',
-  anthropic:      'Anthropic Claude',
-  openai:         'OpenAI',
-  'azure-openai': 'Azure OpenAI',
-  google:         'Google Gemini',
-  ollama:         'Ollama (Local)',
+  demo:             'Demo mode',
+  anthropic:        'Anthropic Claude',
+  openai:           'OpenAI',
+  'azure-openai':   'Azure OpenAI',
+  'azure-foundry':  'Azure AI Foundry',
+  google:           'Google Gemini',
+  ollama:           'Ollama (Local)',
+}
+
+function providerSubLabel(s: APISettings): string {
+  switch (s.provider) {
+    case 'openai':         return s.openaiModel
+    case 'google':         return s.googleModel
+    case 'ollama':         return s.ollamaModel
+    case 'azure-openai':   return s.azureDeployment || 'Azure OpenAI'
+    case 'azure-foundry':  return s.azureFoundryModel || 'Azure AI Foundry'
+    default:               return PROVIDER_LABELS[s.provider] ?? s.provider
+  }
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -434,7 +446,7 @@ export default function App() {
               <p className="text-xs font-medium text-gray-600 group-hover:text-gray-800 transition-colors">Settings</p>
               <div className="flex items-center gap-1 mt-0.5">
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${state.settings.provider === 'demo' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                <span className="text-xs text-gray-400 truncate">{PROVIDER_LABELS[state.settings.provider]}</span>
+                <span className="text-xs text-gray-400 truncate">{providerSubLabel(state.settings)}</span>
               </div>
             </div>
           </button>
