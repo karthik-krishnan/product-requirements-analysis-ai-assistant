@@ -88,7 +88,7 @@ async function callFoundryOpenAI(
       model: s.azureFoundryModel,
       messages: injectFilesIntoMessages(messages, files),
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      max_tokens: 4096,
+      max_completion_tokens: 4096,
     }),
   })
   if (!res.ok) throw new LLMError('Azure AI Foundry (OpenAI)', res.status, await res.text())
