@@ -44,11 +44,12 @@ async function callFoundryClaude(
   })
 
   // Azure AI Foundry routes Anthropic models under {endpoint}/anthropic/v1/messages
-  const url = `${base}/anthropic/v1/messages?api-version=2024-10-01`
+  // Auth: Bearer token (not 'api-key' which is Azure OpenAI-only)
+  const url = `${base}/anthropic/v1/messages`
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'api-key': s.azureFoundryKey,
+      'Authorization': `Bearer ${s.azureFoundryKey}`,
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
