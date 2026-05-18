@@ -1,7 +1,9 @@
 import type { AIProvider, UploadedFile } from '../types'
 
 export function supportsNativePDF(provider: AIProvider): boolean {
-  return provider === 'anthropic' || provider === 'google'
+  // azure-foundry may use Claude models which support native PDF — treated as supported;
+  // the provider itself gates on the actual model name at call time.
+  return provider === 'anthropic' || provider === 'google' || provider === 'azure-foundry'
 }
 
 export async function readFileContent(

@@ -23,7 +23,8 @@ interface Props {
 const PROVIDERS: { id: AIProvider; label: string; sub: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'anthropic',    label: 'Anthropic',    sub: 'Claude Sonnet / Opus',        icon: Zap },
   { id: 'openai',       label: 'OpenAI',       sub: 'GPT-4o / GPT-4',             icon: BrainCircuit },
-  { id: 'azure-openai', label: 'Azure OpenAI', sub: 'GPT-4o on Azure',            icon: Cloud },
+  { id: 'azure-openai',  label: 'Azure OpenAI',    sub: 'GPT-4o on Azure',                        icon: Cloud },
+  { id: 'azure-foundry', label: 'Azure AI Foundry', sub: 'Claude + OpenAI via Azure AI Foundry', icon: Cloud },
   { id: 'google',       label: 'Google',       sub: 'Gemini 1.5 Pro / Flash',     icon: Cpu },
   { id: 'ollama',       label: 'Ollama',       sub: 'Local LLM — no key needed',  icon: Monitor },
   { id: 'demo',         label: 'Demo',         sub: 'Sample data — no key needed', icon: FlaskConical },
@@ -131,9 +132,10 @@ export default function Settings({ settings, enterpriseConfig, initialTab = 'ai'
   const [entDraft, setEntDraft] = useState<EnterpriseConfig>(
     enterpriseConfig ?? { name: '', domainText: '', domainFiles: [], techText: '', techFiles: [] }
   )
-  const [showAnthropicKey, setShowAnthropicKey] = useState(false)
-  const [showOpenAIKey,    setShowOpenAIKey]    = useState(false)
-  const [showAzureKey,     setShowAzureKey]     = useState(false)
+  const [showAnthropicKey,    setShowAnthropicKey]    = useState(false)
+  const [showOpenAIKey,       setShowOpenAIKey]       = useState(false)
+  const [showAzureKey,        setShowAzureKey]        = useState(false)
+  const [showAzureFoundryKey, setShowAzureFoundryKey] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [testMessage, setTestMessage] = useState('')
 
@@ -289,6 +291,48 @@ export default function Settings({ settings, enterpriseConfig, initialTab = 'ai'
                       value={local.azureKey} onChange={e => update({ azureKey: e.target.value })} />
                     <button onClick={() => setShowAzureKey(!showAzureKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       {showAzureKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Azure AI Foundry */}
+            {local.provider === 'azure-foundry' && (
+              <div className="animate-fade-in-up space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Azure AI Foundry Credentials</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                  Supports both <strong>Claude</strong> (claude-*) and <strong>OpenAI</strong> (gpt-*) models deployed in Azure AI Foundry. The model name drives routing automatically.
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Foundry Endpoint URL</label>
+                  <input type="text" className="input-field text-sm"
+                    placeholder="https://your-resource.services.ai.azure.com"
+                    value={local.azureFoundryEndpoint}
+                    onChange={e => update({ azureFoundryEndpoint: e.target.value })} />
+                  <p className="text-xs text-gray-400 mt-1">Your Azure AI Foundry resource endpoint (without trailing slash)</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Model Name</label>
+                  <input type="text" className="input-field text-sm"
+                    placeholder="claude-sonnet-4-6 or gpt-4o"
+                    value={local.azureFoundryModel}
+                    onChange={e => update({ azureFoundryModel: e.target.value })} />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Claude models → <code className="bg-gray-100 px-1 rounded">claude-*</code> &nbsp;·&nbsp;
+                    OpenAI models → <code className="bg-gray-100 px-1 rounded">gpt-*</code> or any deployment name
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+                  <div className="relative">
+                    <input type={showAzureFoundryKey ? 'text' : 'password'} className="input-field pr-9 text-sm"
+                      placeholder="Your Azure AI Foundry key"
+                      value={local.azureFoundryKey}
+                      onChange={e => update({ azureFoundryKey: e.target.value })} />
+                    <button onClick={() => setShowAzureFoundryKey(!showAzureFoundryKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showAzureFoundryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>

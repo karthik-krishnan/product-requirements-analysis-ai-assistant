@@ -1,4 +1,4 @@
-export type AIProvider = 'demo' | 'anthropic' | 'openai' | 'azure-openai' | 'google' | 'ollama'
+export type AIProvider = 'demo' | 'anthropic' | 'openai' | 'azure-openai' | 'azure-foundry' | 'google' | 'ollama'
 
 export type AssistanceLevel = 0 | 1 | 2 | 3 | 4
 
@@ -10,6 +10,9 @@ export interface APISettings {
   azureEndpoint: string
   azureKey: string
   azureDeployment: string
+  azureFoundryEndpoint: string
+  azureFoundryKey: string
+  azureFoundryModel: string
   googleKey: string
   googleModel: string
   ollamaEndpoint: string

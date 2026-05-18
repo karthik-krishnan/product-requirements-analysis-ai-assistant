@@ -2,6 +2,7 @@ import type { APISettings, UploadedFile } from '../../types'
 import { callAnthropic } from './providers/anthropic'
 import { callOpenAI }    from './providers/openai'
 import { callAzureOpenAI } from './providers/azure'
+import { callAzureFoundry } from './providers/azure-foundry'
 import { callGoogle }    from './providers/google'
 import { callOllama }    from './providers/ollama'
 import { callDemo }      from './providers/demo'
@@ -21,7 +22,8 @@ export function hasValidKey(settings: APISettings): boolean {
     case 'demo':         return false
     case 'anthropic':    return !!settings.anthropicKey.trim()
     case 'openai':       return !!settings.openaiKey.trim()
-    case 'azure-openai': return !!settings.azureKey.trim() && !!settings.azureEndpoint.trim() && !!settings.azureDeployment.trim()
+    case 'azure-openai':  return !!settings.azureKey.trim() && !!settings.azureEndpoint.trim() && !!settings.azureDeployment.trim()
+    case 'azure-foundry': return !!settings.azureFoundryKey.trim() && !!settings.azureFoundryEndpoint.trim() && !!settings.azureFoundryModel.trim()
     case 'google':       return !!settings.googleKey.trim()
     case 'ollama':       return !!settings.ollamaEndpoint.trim() && !!settings.ollamaModel.trim()
   }
@@ -53,7 +55,8 @@ export async function callLLM(
     case 'demo':         return callDemo(promptType, messages)
     case 'anthropic':    return callAnthropic(messages, settings, files)           // Anthropic has no explicit JSON mode flag
     case 'openai':       return callOpenAI(messages, settings, files, jsonMode)
-    case 'azure-openai': return callAzureOpenAI(messages, settings, files, jsonMode)
+    case 'azure-openai':  return callAzureOpenAI(messages, settings, files, jsonMode)
+    case 'azure-foundry': return callAzureFoundry(messages, settings, files, jsonMode)
     case 'google':       return callGoogle(messages, settings, files, jsonMode)
     case 'ollama':       return callOllama(messages, settings, files, jsonMode)
   }
